@@ -34,7 +34,7 @@ def savgol_curve(path, window_ratio=0.15, iterations=3, order=5):
     return curve.tolist()
 
 
-def bspline_curve(points, degree=3, smooth_factor=None, n=100):
+def bspline_curve(points, degree=3, smooth_factor=None):
     """
     Gera curva B-spline com controle completo dos parâmetros
     :param points: Pontos de entrada

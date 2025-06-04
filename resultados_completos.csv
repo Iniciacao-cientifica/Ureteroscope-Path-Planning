@@ -1,0 +1,1 @@
+technique,timestamp,total_time,window_ratio,order,smooth_factor,iterations,lambda_factor,fitness,extrapolations,mse,curvature_mean,curvature_max,risk_points,acuracia_final

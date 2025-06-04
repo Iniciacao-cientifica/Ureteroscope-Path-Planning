@@ -8,6 +8,7 @@ from curves import kalman_curve
 from curves import laplacian_curve
 import metrics
 from view import Viewer3D
+from optimization import optimize_all
 
 directory = 'map/'  # Substitua pelo seu caminho
 volume = data.carregar_imagens_binarias(directory)
@@ -15,7 +16,6 @@ print("Volume shape:", volume.shape)
 
 points = data.extrair_coordenadas_brancas(volume)
 print("Total de pontos navegáveis:", points.shape[0])
-print(np.unique(volume, return_counts=True))
 
 kidney_stone = (220, 174, 227 - 217)  # (x, y, z)
 #start_point = tuple(points[np.argmin(points[:, 2])])
@@ -31,11 +31,15 @@ if path:
     path = [p[::-1] for p in path]  # (z, y, x) → (x, y, z)
     #pontos_filtrados = reduzir_pontos_min_distancia(caminho_xyz, min_dist=1.0)
     #print("Pontos reduzidos:", len(pontos_filtrados), "pontos.")
-    #curve = savgol_curve(path, order=9)
-    curve = bspline_curve(path, degree=5, smooth_factor=30, n=len(path))
-    #curve = kalman_curve(path, process_noise=0.05, measurement_noise=0.2)
-    #curve = laplacian_curve(path, iterations=8, lambda_factor=0.3)
 
+    best_results = optimize_all(
+        path=path,
+        volume=volume,
+        kidney_stone=kidney_stone,
+        output_file="resultados_completos.csv"
+    )
+    bspline_params = best_results['B-Spline']['params']
+    curve = bspline_curve(path, degree=bspline_params['order'], smooth_factor=bspline_params['smooth_factor'])
     # Validação crítica
     metricas = metrics.calcular_metricas_completas(path, curve, volume, kidney_stone, start_time)
     relatorio = metrics.verificar_extrapolacao(curve, volume, limiar_distancia=0.1)
