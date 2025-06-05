@@ -9,6 +9,7 @@ from curves import laplacian_curve
 import metrics
 from view import Viewer3D
 from optimization import optimize_all
+from optimization import load_best_results
 
 directory = 'map/'  # Substitua pelo seu caminho
 volume = data.carregar_imagens_binarias(directory)
@@ -29,26 +30,22 @@ path = path_planning.path_plan(volume, start_idx, end_idx)
 if path:
     print("Caminho encontrado com", len(path), "pontos.")
     path = [p[::-1] for p in path]  # (z, y, x) → (x, y, z)
-    #pontos_filtrados = reduzir_pontos_min_distancia(caminho_xyz, min_dist=1.0)
-    #print("Pontos reduzidos:", len(pontos_filtrados), "pontos.")
+    path = path_planning.reduzir_pontos_porcentagem(path, porcentagem=1.0)
+    print("Pontos reduzidos:", len(path), "pontos.")
 
-    best_results = optimize_all(
-        path=path,
-        volume=volume,
-        kidney_stone=kidney_stone,
-        output_file="resultados_completos.csv"
-    )
-    bspline_params = best_results['B-Spline']['params']
-    curve = bspline_curve(path, degree=bspline_params['order'], smooth_factor=bspline_params['smooth_factor'])
-    # Validação crítica
-    metricas = metrics.calcular_metricas_completas(path, curve, volume, kidney_stone, start_time)
-    relatorio = metrics.verificar_extrapolacao(curve, volume, limiar_distancia=0.1)
     
+    best_params = load_best_results("resultados_completos.csv")
+
+    savgol_params = best_params['Savitzky-Golay']['params']
+    bspline_params = best_params['B-Spline']['params']
+    laplacian_params = best_params['Laplaciana']['params']
+
+    savgol = savgol_curve(path, window_ratio=savgol_params['window_ratio'], order=savgol_params['order'])
+    bspline = bspline_curve(path, order=bspline_params['order'], smooth_factor=bspline_params['smooth_factor'])
+    laplacian = laplacian_curve(path, iterations=laplacian_params['iterations'], lambda_factor=laplacian_params['lambda_factor'])
     
-    metrics.print_relatorio_completo(metricas, relatorio)
-    # Exportação de dados
-    #exportar_resultados(curve, metricas)
-    
+    curve = savgol
+
 else:
     print("Caminho não encontrado.")
 

@@ -334,7 +334,4 @@ class Viewer3D:
     def show(self):
         """Exibe a visualização 3D"""
         self.plotter.show(title='Trajetória 3D com Controles')
-
-# Exemplo de uso:
-# visualizador = Visualizador3D(volume, caminho, pedra_xyz, inicio_xyz, curva)
-# visualizador.mostrar()
+        

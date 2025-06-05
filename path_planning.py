@@ -2,6 +2,7 @@ import numpy as np
 from queue import PriorityQueue
 from scipy.ndimage import label
 from scipy.ndimage import gaussian_filter
+from scipy.spatial.distance import euclidean
 
 def reconstruct_path(came_from, current, start):
     path = [current]
@@ -171,6 +172,41 @@ def verificar_conectividade(volume, start, end):
     estrutura = np.ones((3, 3, 3), dtype=np.uint8)  # conectividade 26
     labeled, num = label(volume, structure=estrutura)
     return labeled[start] == labeled[end] and labeled[start] != 0
+
+def reduzir_pontos_min_distancia(pontos, min_dist=1.0):
+    if not pontos:
+        return []
+
+    reduzidos = [pontos[0]]
+    for p in pontos[1:]:
+        if euclidean(p, reduzidos[-1]) >= min_dist:
+            reduzidos.append(p)
+    return reduzidos
+
+def reduzir_pontos_porcentagem(pontos, porcentagem=1.0):
+    if not pontos or porcentagem <= 0:
+        return []
+    
+    n = len(pontos)
+    n_desejado = max(1, round(n * porcentagem))
+    
+    if n_desejado >= n:
+        return pontos.copy()
+    
+    if n_desejado == 1:
+        return [pontos[0]]
+    
+    reduzidos = []
+    # Calcula os índices uniformemente distribuídos
+    indices = [round(i * (n - 1) / (n_desejado - 1)) for i in range(n_desejado)]
+    # Remove duplicatas mantendo a ordem
+    seen = set()
+    for idx in indices:
+        if idx not in seen:
+            seen.add(idx)
+            reduzidos.append(pontos[int(idx)])
+    
+    return reduzidos
 
 def path_plan(volume, start_idx, end_idx):
     path = None

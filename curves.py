@@ -34,16 +34,16 @@ def savgol_curve(path, window_ratio=0.15, iterations=3, order=5):
     return curve.tolist()
 
 
-def bspline_curve(points, degree=3, smooth_factor=None):
+def bspline_curve(points, order=3, smooth_factor=None):
     """
     Gera curva B-spline com controle completo dos parâmetros
     :param points: Pontos de entrada
-    :param degree: Grau da curva (default=3 cúbica)
+    :param order: Grau da curva (default=3 cúbica)
     :param smoothness: Fator de suavização (None para interpolação)
     :param num_points: Número de pontos na curva final
     """
     points_np = np.array(points).T
-    tck, u = splprep(points_np, k=degree, s=smooth_factor)
+    tck, u = splprep(points_np, k=order, s=smooth_factor)
     curve = (np.array(splev(u, tck)).T).tolist()
     return curve
 

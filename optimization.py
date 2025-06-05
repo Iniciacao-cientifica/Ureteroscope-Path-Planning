@@ -13,6 +13,25 @@ from itertools import product
 from GA import GeneticAlgorithm
 from GWO import GreyWolfOptimizer
 
+def format_value(value):
+    if isinstance(value, float):
+        # 3 casas decimais
+        return f"{value:.6f}".replace('.', ',')
+    elif isinstance(value, int):
+        return str(value)
+    return value
+
+def print_best_results(best_results):
+    print("\n=== RESUMO DOS MELHORES PARÂMETROS ===")
+    for tech, data in best_results.items():
+        print(f"\nTécnica: {tech}")
+        print(f"Fitness: {data['fitness']:.4f}")
+        print("Parâmetros:")
+        for param, value in data['params'].items():
+            print(f"  {param}: {value}")
+        print("Métricas:")
+        for metric, value in data['metrics'].items():
+            print(f"  {metric}: {value:.4f}")
 
 def create_objective_function(technique_name, path_points, volume, end_point):
     """
@@ -30,7 +49,7 @@ def create_objective_function(technique_name, path_points, volume, end_point):
         elif technique_name == "B-Spline":
             smooth_factor = params['smooth_factor']
             order = int(params['order'])
-            smoothed = bspline_curve(path_points, order, smooth_factor, n=len(path_points))
+            smoothed = bspline_curve(path_points, order, smooth_factor)
         elif technique_name == "Kalman":
             process_noise = params['process_noise']
             measurement_noise = params['measurement_noise']
@@ -219,17 +238,21 @@ def grid_search(technique_name, path_points, volume, end_point,
                 record = {
                     'technique': technique_name,
                     'timestamp': datetime.now().isoformat(),
-                    'total_time': total_time,  # Preenchido posteriormente
-                    'fitness': fitness,
+                    'total_time': format_value(total_time),  # Preenchido posteriormente
+                    'fitness': format_value(fitness),
                 }
                 
-                # Adicionar parâmetros específicos
-                for param in ['window_ratio', 'order', 'smooth_factor', 'iterations', 'lambda_factor']:
-                    record[param] = converted_params.get(param, None)
+                param_fields = ['window_ratio', 'order', 'smooth_factor', 'iterations', 'lambda_factor']
+                for param in param_fields:
+                    value = converted_params.get(param, None)
+                    record[param] = format_value(value) if value is not None else None
                 
-                # Adicionar métricas
-                for metric in metrics:
-                    record[metric] = metrics[metric]
+                # Adicionar métricas formatadas
+                metric_fields = ['extrapolations', 'mse', 'curvature_mean', 
+                                'curvature_max','torsao_mean', 'torsao_max', 'risk_points', 'acuracia_final']
+                for metric in metric_fields:
+                    value = metrics.get(metric, None)
+                    record[metric] = format_value(value) if value is not None else None
                 
                 writer.writerow(record)
 
@@ -275,20 +298,20 @@ def optimize_all(path, volume, kidney_stone, output_file="grid_search_report.csv
     techniques = {
         'Savitzky-Golay': {
             'grid_steps': {
-                'window_ratio': [0.05, 0.1, 0.15, 0.3, 0.5],
+                'window_ratio': [0.05, 0.1, 0.15, 0.3],
                 'order': [2, 3, 5, 7, 9]
             }
         },
         'B-Spline': {
             'grid_steps': {
-                'smooth_factor': [1, 5, 15, 30, 50],
-                'order': [1, 2, 3, 4, 5]
+                'smooth_factor': [1, 5, 15, 30, 35],
+                'order': [2, 3, 4, 5]
             }
         },
         'Laplaciana': {
             'grid_steps': {
-                'iterations': [3, 5, 7, 9, 10],
-                'lambda_factor': [0.1, 0.2, 0.3, 0.5, 1.0]
+                'iterations': [3, 5, 7, 10, 15],
+                'lambda_factor': [0.05, 0.1, 0.2, 0.3]
             }
         }
     }
@@ -340,7 +363,8 @@ def optimize_all(path, volume, kidney_stone, output_file="grid_search_report.csv
 
 
     # Imprimir resumo dos melhores resultados
-    print("\n=== RESUMO DOS MELHORES PARÂMETROS ===")
+    print_best_results(best_results)
+    """ print("\n=== RESUMO DOS MELHORES PARÂMETROS ===")
     for tech, data in best_results.items():
         print(f"\nTécnica: {tech}")
         print(f"Fitness: {data['fitness']:.4f}")
@@ -350,6 +374,78 @@ def optimize_all(path, volume, kidney_stone, output_file="grid_search_report.csv
             print(f"  {param}: {value}")
         print("Métricas:")
         for metric, value in data['metrics'].items():
-            print(f"  {metric}: {value:.4f}")
+            print(f"  {metric}: {value:.4f}") """
     
+    return best_results
+
+
+def load_best_results(csv_file):
+    best_results = {
+        'Savitzky-Golay': {'fitness': float('inf')},
+        'B-Spline': {'fitness': float('inf')},
+        'Laplaciana': {'fitness': float('inf')}
+    }
+    
+    metric_fields = [
+        'extrapolations', 'mse', 'curvature_mean',
+        'curvature_max', 'risk_points', 'acuracia_final'
+    ]
+    
+    try:
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            
+            for row in reader:
+                technique = row['technique']
+                
+                try:
+                    fitness = float(row['fitness'].replace(',', '.'))
+                except:
+                    continue
+                
+                if fitness < best_results[technique]['fitness']:
+                    best_results[technique]['fitness'] = fitness
+                    
+                    # Parâmetros
+                    params = {}
+                    if technique == 'Savitzky-Golay':
+                        params = {
+                            'window_ratio': float(row['window_ratio'].replace(',', '.')) if row['window_ratio'] else None,
+                            'order': int(row['order']) if row['order'] else None
+                        }
+                    elif technique == 'B-Spline':
+                        params = {
+                            'smooth_factor': float(row['smooth_factor'].replace(',', '.')) if row['smooth_factor'] else None,
+                            'order': int(row['order']) if row['order'] else None
+                        }
+                    elif technique == 'Laplaciana':
+                        params = {
+                            'iterations': int(row['iterations']) if row['iterations'] else None,
+                            'lambda_factor': float(row['lambda_factor'].replace(',', '.')) if row['lambda_factor'] else None
+                        }
+                    
+                    best_results[technique]['params'] = params
+                    
+                    # Métricas
+                    metrics = {}
+                    for field in metric_fields:
+                        if row[field]:
+                            try:
+                                # Tentar converter para float primeiro
+                                value = float(row[field].replace(',', '.'))
+                                # Converter para int se for número inteiro
+                                metrics[field] = int(value) if value.is_integer() else value
+                            except:
+                                metrics[field] = row[field]
+                        else:
+                            metrics[field] = None
+                    
+                    best_results[technique]['metrics'] = metrics
+    
+    except FileNotFoundError:
+        print(f"Erro: Arquivo {csv_file} não encontrado!")
+        return None
+    
+    print_best_results(best_results)
+
     return best_results
