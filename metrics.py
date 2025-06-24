@@ -6,6 +6,34 @@ from scipy.spatial import KDTree
 import pyvista as pv
 import time
 
+# Função sigmoide personalizada
+def sigmoid(x, scale=1.0, offset=0.0):
+    """Função sigmoide ajustável"""
+    return 1 / (1 + np.exp(-scale * (x - offset)))
+
+# Função Lei de Mu (μ-law companding)
+def mu_law(x, mu=100.0):
+    """Aplica compressão μ-law a um valor normalizado [0,1]"""
+    # Garante que x está no intervalo [0,1]
+    x_clipped = np.clip(x, 1e-9, 1.0)  # Evita log(0)
+    return np.log(1 + mu * x_clipped) / np.log(1 + mu)
+
+# Função para normalizar cada métrica individualmente
+def normalize_metric(metric_name, value, path_length):
+    if metric_name in ['extrapolations', 'risk_points']:
+        # 1. Normalização linear pelo número de pontos
+        normalized = value / path_length
+        
+        # 2. Aplicação da Lei de Mu
+        return mu_law(normalized, mu=500.0)
+    
+    elif metric_name == 'torsao_max':
+        # Aplicação de sigmoide com parâmetros ajustados
+        scaled_value = value * 0.1  # Fator de escala empírico
+        return sigmoid(scaled_value, scale=2.0, offset=1.0)
+    
+    else:
+        return value
 
 def calcular_curvatura_torsao(curva):
     curva_np = np.array(curva)

@@ -10,6 +10,7 @@ import metrics
 from view import Viewer3D
 from optimization import optimize_all
 from optimization import load_best_results
+from optimization import calculate_optimal_weights
 
 directory = 'map/'  # Substitua pelo seu caminho
 volume = data.carregar_imagens_binarias(directory)
@@ -33,7 +34,14 @@ if path:
     path = path_planning.reduzir_pontos_porcentagem(path, porcentagem=1.0)
     print("Pontos reduzidos:", len(path), "pontos.")
 
-    
+    """ optimal_weights = calculate_optimal_weights("resultados_completos.csv")
+
+    print("Pesos calculados pelo método da entropia:")
+    for metric, weight in optimal_weights.items():
+        print(f"{metric}: {weight:.4f}")
+
+    """
+
     best_params = load_best_results("resultados_completos.csv")
 
     savgol_params = best_params['Savitzky-Golay']['params']
@@ -43,7 +51,7 @@ if path:
     savgol = savgol_curve(path, window_ratio=savgol_params['window_ratio'], order=savgol_params['order'])
     bspline = bspline_curve(path, order=bspline_params['order'], smooth_factor=bspline_params['smooth_factor'])
     laplacian = laplacian_curve(path, iterations=laplacian_params['iterations'], lambda_factor=laplacian_params['lambda_factor'])
-    
+ 
     curve = savgol
 
 else:

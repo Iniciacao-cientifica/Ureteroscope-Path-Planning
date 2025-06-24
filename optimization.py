@@ -5,12 +5,15 @@ from curves import laplacian_curve
 from tqdm import tqdm
 import numpy as np
 import metrics
+from metrics import normalize_metric
 import time
 import csv
 from datetime import datetime
 from itertools import product
+import pandas as pd
+import numpy as np
+from scipy.stats import entropy
 
-from GA import GeneticAlgorithm
 from GWO import GreyWolfOptimizer
 
 def format_value(value):
@@ -173,19 +176,24 @@ def grid_search(technique_name, path_points, volume, end_point,
     
     # Pesos padrão
     weights = custom_weights or {
-        'extrapolations': 5,
+        'extrapolations': 10,
         'mse': 0.1,
-        'curvature_mean': 2,
+        'curvature_mean': 1,
         'curvature_max': 1,
-        'torsao_mean': 2,
-        'torsao_max': 0.5,
+        'torsao_mean': 1,
+        'torsao_max': 1,
         'risk_points': 0.5,
-        'acuracia_final': 0.5
+        'acuracia_final': 0.4
     }
     
     # Função para calcular fitness
-    def calculate_fitness(metrics):
-        return sum(weights[metric] * metrics[metric] for metric in metrics)
+    def calculate_fitness(metricas):
+        total = 0
+        for metric, value in metricas.items():
+            # Aplicar normalização específica para cada métrica
+            norm_value = normalize_metric(metric, value, len(path_points))
+            total += weights[metric] * norm_value
+        return total
     
     # Gerar grade de parâmetros
     param_grid = {}
@@ -231,6 +239,10 @@ def grid_search(technique_name, path_points, volume, end_point,
             # Avaliar combinação
             start_time = time.time()
             metrics = objective_func(converted_params)
+            normalized_extrapolations = normalize_metric('extrapolations', metrics['extrapolations'], len(path_points))
+            normalized_risk_points = normalize_metric('risk_points', metrics['risk_points'], len(path_points))
+            normalized_torsao_max = normalize_metric('torsao_max', metrics['torsao_max'], len(path_points))
+
             total_time = time.time() - start_time
             fitness = calculate_fitness(metrics)
 
@@ -240,6 +252,10 @@ def grid_search(technique_name, path_points, volume, end_point,
                     'timestamp': datetime.now().isoformat(),
                     'total_time': format_value(total_time),  # Preenchido posteriormente
                     'fitness': format_value(fitness),
+                    
+                    'normalized_extrapolations': format_value(normalized_extrapolations),
+                    'normalized_risk_points': format_value(normalized_risk_points),
+                    'normalized_torsao_max': format_value(normalized_torsao_max),
                 }
                 
                 param_fields = ['window_ratio', 'order', 'smooth_factor', 'iterations', 'lambda_factor']
@@ -316,6 +332,17 @@ def optimize_all(path, volume, kidney_stone, output_file="grid_search_report.csv
         }
     }
 
+    weights = {
+        'extrapolations': 0.25,   # Segurança crítica
+        'risk_points': 0.15,       # Segurança
+        'curvature_max': 0.1,     # Suavidade - limitar picos
+        'torsion_max': 0.1,       # Suavidade 3D - evitar torções bruscas
+        'curvature_mean': 0.1,    # Suavidade geral
+        'torsion_mean': 0.1,      # Suavidade 3D geral
+        'acuracia_final': 0.15,    # Precisão final
+        'mse': 0.05                # Fidelidade ao caminho
+    }
+
     # Cabeçalho do CSV
     fieldnames = [
         'technique', 'timestamp', 'total_time',
@@ -324,7 +351,8 @@ def optimize_all(path, volume, kidney_stone, output_file="grid_search_report.csv
         'fitness', 'extrapolations', 'mse', 
         'curvature_mean', 'curvature_max',
         'torsao_mean', 'torsao_max', 
-        'risk_points', 'acuracia_final'
+        'risk_points', 'acuracia_final',
+        'normalized_extrapolations', 'normalized_risk_points', 'normalized_torsao_max'
     ]
     
     best_results = {}
@@ -388,7 +416,8 @@ def load_best_results(csv_file):
     
     metric_fields = [
         'extrapolations', 'mse', 'curvature_mean',
-        'curvature_max', 'risk_points', 'acuracia_final'
+        'curvature_max', 'torsao_mean', 'torsao_max', 
+        'risk_points', 'acuracia_final'
     ]
     
     try:
@@ -449,3 +478,44 @@ def load_best_results(csv_file):
     print_best_results(best_results)
 
     return best_results
+
+def calculate_optimal_weights(csv_file):
+    """
+    Calcula pesos ótimos baseados nos resultados do grid search
+    usando o método da entropia
+    """
+    
+    # Carregar dados
+    df = pd.read_csv(csv_file, delimiter=';', decimal=',')
+    
+    # Selecionar colunas de métricas
+    metric_cols = ['extrapolations', 'mse', 'curvature_mean', 
+                   'curvature_max', 'torsao_mean', 'torsao_max',
+                   'risk_points', 'acuracia_final']
+    
+    # Remover linhas com valores faltantes
+    df = df.dropna(subset=metric_cols)
+    
+    # Matriz de métricas
+    metrics_matrix = df[metric_cols].values
+    
+    # Adicionar pequeno valor para evitar divisão por zero
+    metrics_matrix = metrics_matrix + 1e-10
+    
+    # Passo 1: Normalização
+    norm_matrix = metrics_matrix / metrics_matrix.sum(axis=0)
+    
+    # Passo 2: Calcular entropia
+    entropies = []
+    for j in range(norm_matrix.shape[1]):
+        col = norm_matrix[:, j]
+        entropies.append(entropy(col))
+    
+    # Passo 3: Grau de diversificação
+    k = 1 / np.log(len(metrics_matrix))  # Fator de normalização
+    diversifications = 1 - np.array(entropies) * k
+    
+    # Passo 4: Calcular pesos
+    weights = diversifications / diversifications.sum()
+    
+    return dict(zip(metric_cols, weights))
