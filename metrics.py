@@ -3,7 +3,10 @@ from scipy.interpolate import splprep, splev
 from scipy.ndimage import map_coordinates
 from scipy.spatial.distance import directed_hausdorff
 from scipy.spatial import KDTree
-import pyvista as pv
+try:
+    import pyvista as pv
+except ImportError:
+    pv = None
 import time
 
 # Função sigmoide personalizada

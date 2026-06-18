@@ -1,7 +1,10 @@
 
 import numpy as np
 from scipy.signal import savgol_filter
-from pykalman import KalmanFilter
+try:
+    from pykalman import KalmanFilter
+except ImportError:
+    KalmanFilter = None
 from scipy.interpolate import splprep, splev
 
 
@@ -49,6 +52,9 @@ def bspline_curve(points, order=3, smooth_factor=None):
 
 def kalman_curve(points, process_noise=0.1, measurement_noise=1.0):
     """Suavização com Filtro de Kalman"""
+    if KalmanFilter is None:
+        raise ImportError("pykalman is required to use kalman_curve.")
+
     kf = KalmanFilter(
         transition_matrices=np.eye(3),
         observation_matrices=np.eye(3),

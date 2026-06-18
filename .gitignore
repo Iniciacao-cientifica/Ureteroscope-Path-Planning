@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# Generated VR exports
+exports/
+
+# Unity generated folders
+UnityVRPrototype/Library/
+UnityVRPrototype/Temp/
+UnityVRPrototype/Obj/
+UnityVRPrototype/Build/
+UnityVRPrototype/Builds/
+UnityVRPrototype/Logs/
+UnityVRPrototype/UserSettings/
