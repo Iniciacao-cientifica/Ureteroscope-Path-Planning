@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Abrir PyVista - Murillo",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}\\pyvista_demo.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYVISTA_OFF_SCREEN": "false",
+        "VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN": "0"
+      }
+    }
+  ]
+}

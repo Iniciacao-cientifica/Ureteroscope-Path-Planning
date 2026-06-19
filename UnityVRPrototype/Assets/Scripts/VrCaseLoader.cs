@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
 public class VrCaseLoader : MonoBehaviour
@@ -16,6 +18,8 @@ public class VrCaseLoader : MonoBehaviour
     public float voxelToMeterScale = 0.002f;
     public float routeWidth = 0.01f;
     public float pointRadius = 0.025f;
+    public float followCameraDistance = 0.16f;
+    public float followCameraHeight = 0.08f;
     [Range(0.05f, 1f)] public float meshOpacity = 0.35f;
 
     [Header("Route Colors")]
@@ -35,6 +39,7 @@ public class VrCaseLoader : MonoBehaviour
     private VrRouteData routeData;
     private GameObject originalPathObject;
     private GameObject smoothedPathObject;
+    private GameObject urinaryTractInstance;
     private Renderer[] meshRenderers;
     private Material meshMaterial;
     private float followTimer;
@@ -49,6 +54,7 @@ public class VrCaseLoader : MonoBehaviour
         BuildPoint("Start", routeData.start, startColor, pointRadius);
         BuildPoint("Target Stone", routeData.target, targetColor, pointRadius * 1.5f);
         BuildMetricsLabel();
+        FrameCameraOverview();
     }
 
     private void Update()
@@ -108,7 +114,7 @@ public class VrCaseLoader : MonoBehaviour
         }
 
         string json = File.ReadAllText(path, Encoding.UTF8);
-        routeData = JsonUtility.FromJson<VrRouteData>(json);
+        routeData = VrRouteJsonParser.Parse(json);
         if (routeData == null || routeData.path_smoothed == null || routeData.path_smoothed.Length == 0)
         {
             throw new InvalidOperationException("Route JSON is empty or incompatible with VrRouteData.");
@@ -122,12 +128,17 @@ public class VrCaseLoader : MonoBehaviour
             return;
         }
 
-        urinaryTractMesh.transform.SetParent(sceneRoot, false);
-        urinaryTractMesh.transform.localScale = Vector3.one * voxelToMeterScale;
-        urinaryTractMesh.transform.localRotation = Quaternion.identity;
-        urinaryTractMesh.transform.localPosition = Vector3.zero;
+        urinaryTractInstance = urinaryTractMesh.scene.IsValid()
+            ? urinaryTractMesh
+            : Instantiate(urinaryTractMesh);
 
-        meshRenderers = urinaryTractMesh.GetComponentsInChildren<Renderer>();
+        urinaryTractInstance.name = "Urinary Tract Mesh";
+        urinaryTractInstance.transform.SetParent(sceneRoot, false);
+        urinaryTractInstance.transform.localScale = Vector3.one * voxelToMeterScale;
+        urinaryTractInstance.transform.localRotation = Quaternion.identity;
+        urinaryTractInstance.transform.localPosition = Vector3.zero;
+
+        meshRenderers = urinaryTractInstance.GetComponentsInChildren<Renderer>();
         meshMaterial = BuildMaterial(new Color(0.95f, 0.12f, 0.05f, meshOpacity));
         foreach (Renderer meshRenderer in meshRenderers)
         {
@@ -187,9 +198,11 @@ public class VrCaseLoader : MonoBehaviour
     {
         GameObject label = new GameObject("Case Metrics Label");
         label.transform.SetParent(sceneRoot, false);
-        label.transform.localPosition = MapPoint(routeData.target) + new Vector3(0.05f, 0.08f, 0.05f);
+        Bounds bounds = CalculateRouteBounds();
+        label.transform.localPosition = bounds.center + new Vector3(bounds.size.x * 0.6f + 0.08f, bounds.size.y * 0.35f + 0.06f, 0f);
+        label.transform.localRotation = Quaternion.Euler(20f, -25f, 0f);
         TextMesh text = label.AddComponent<TextMesh>();
-        text.characterSize = 0.025f;
+        text.characterSize = 0.012f;
         text.anchor = TextAnchor.MiddleLeft;
         text.alignment = TextAlignment.Left;
         text.color = Color.white;
@@ -217,6 +230,43 @@ public class VrCaseLoader : MonoBehaviour
         }
 
         return new Vector3(point.x, point.y, point.z) * voxelToMeterScale;
+    }
+
+    private Bounds CalculateRouteBounds()
+    {
+        VrPoint[] points = routeData.path_smoothed != null && routeData.path_smoothed.Length > 0
+            ? routeData.path_smoothed
+            : routeData.path_original;
+
+        Bounds bounds = new Bounds(MapPoint(points[0]), Vector3.zero);
+        for (int i = 1; i < points.Length; i++)
+        {
+            bounds.Encapsulate(MapPoint(points[i]));
+        }
+
+        bounds.Expand(0.15f);
+        return bounds;
+    }
+
+    private void FrameCameraOverview()
+    {
+        Transform rig = cameraRig != null ? cameraRig : Camera.main != null ? Camera.main.transform : null;
+        if (rig == null)
+        {
+            return;
+        }
+
+        Bounds bounds = CalculateRouteBounds();
+        float size = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+        Vector3 center = sceneRoot.TransformPoint(bounds.center);
+        Vector3 offset = new Vector3(size * 0.75f, size * 0.45f, -size * 1.25f);
+
+        rig.position = center + offset;
+        Vector3 direction = center - rig.position;
+        if (direction.sqrMagnitude > 0.0001f)
+        {
+            rig.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+        }
     }
 
     private Material BuildMaterial(Color color)
@@ -271,14 +321,21 @@ public class VrCaseLoader : MonoBehaviour
         int indexB = Mathf.Min(indexA + 1, routeData.path_smoothed.Length - 1);
         float localT = exactIndex - indexA;
 
-        Vector3 position = Vector3.Lerp(
+        Vector3 routePosition = Vector3.Lerp(
             MapPoint(routeData.path_smoothed[indexA]),
             MapPoint(routeData.path_smoothed[indexB]),
             localT
         );
         Vector3 lookAt = MapPoint(routeData.path_smoothed[Mathf.Min(indexB + 3, routeData.path_smoothed.Length - 1)]);
 
-        rig.position = sceneRoot.TransformPoint(position);
+        Vector3 forward = (lookAt - routePosition).normalized;
+        if (forward.sqrMagnitude < 0.0001f)
+        {
+            forward = Vector3.forward;
+        }
+
+        Vector3 cameraPosition = routePosition - forward * followCameraDistance + Vector3.up * followCameraHeight;
+        rig.position = sceneRoot.TransformPoint(cameraPosition);
         Vector3 direction = sceneRoot.TransformPoint(lookAt) - rig.position;
         if (direction.sqrMagnitude > 0.0001f)
         {
@@ -289,5 +346,156 @@ public class VrCaseLoader : MonoBehaviour
         {
             followingRoute = false;
         }
+    }
+}
+
+public static class VrRouteJsonParser
+{
+    public static VrRouteData Parse(string json)
+    {
+        VrRouteData data = new VrRouteData
+        {
+            case_name = MatchString(json, "case_name"),
+            clinical_notice = MatchString(json, "clinical_notice"),
+            start = MatchPoint(json, "start"),
+            target = MatchPoint(json, "target"),
+            path_original = MatchPointArray(json, "path_original"),
+            path_smoothed = MatchPointArray(json, "path_smoothed"),
+            metrics = MatchMetrics(json)
+        };
+
+        return data;
+    }
+
+    private static VrRouteMetrics MatchMetrics(string json)
+    {
+        string block = MatchObjectBlock(json, "metrics");
+        return new VrRouteMetrics
+        {
+            path_points = (int)MatchFloat(block, "path_points"),
+            exported_path_points = (int)MatchFloat(block, "exported_path_points"),
+            smoothed_points = (int)MatchFloat(block, "smoothed_points"),
+            path_length_voxels = MatchFloat(block, "path_length_voxels"),
+            smoothed_length_voxels = MatchFloat(block, "smoothed_length_voxels"),
+            risk_points = (int)MatchFloat(block, "risk_points"),
+            final_error_voxels = MatchFloat(block, "final_error_voxels"),
+            processing_seconds = MatchFloat(block, "processing_seconds"),
+            curvature_mean = MatchFloat(block, "curvature_mean"),
+            curvature_max = MatchFloat(block, "curvature_max"),
+            torsion_mean = MatchFloat(block, "torsion_mean"),
+            torsion_max = MatchFloat(block, "torsion_max"),
+            outside_points = (int)MatchFloat(block, "outside_points"),
+            outside_percent = MatchFloat(block, "outside_percent"),
+            outside_max_distance = MatchFloat(block, "outside_max_distance"),
+            outside_mean_distance = MatchFloat(block, "outside_mean_distance")
+        };
+    }
+
+    private static VrPoint MatchPoint(string json, string key)
+    {
+        return MatchPointFromBlock(MatchObjectBlock(json, key));
+    }
+
+    private static VrPoint[] MatchPointArray(string json, string key)
+    {
+        string array = MatchArrayBlock(json, key);
+        MatchCollection matches = Regex.Matches(
+            array,
+            "\\{\\s*\"x\"\\s*:\\s*(?<x>-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*,\\s*\"y\"\\s*:\\s*(?<y>-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*,\\s*\"z\"\\s*:\\s*(?<z>-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*\\}"
+        );
+
+        VrPoint[] points = new VrPoint[matches.Count];
+        for (int i = 0; i < matches.Count; i++)
+        {
+            points[i] = new VrPoint
+            {
+                x = ParseFloat(matches[i].Groups["x"].Value),
+                y = ParseFloat(matches[i].Groups["y"].Value),
+                z = ParseFloat(matches[i].Groups["z"].Value)
+            };
+        }
+
+        return points;
+    }
+
+    private static VrPoint MatchPointFromBlock(string block)
+    {
+        return new VrPoint
+        {
+            x = MatchFloat(block, "x"),
+            y = MatchFloat(block, "y"),
+            z = MatchFloat(block, "z")
+        };
+    }
+
+    private static string MatchString(string json, string key)
+    {
+        Match match = Regex.Match(json, $"\"{key}\"\\s*:\\s*\"(?<value>[^\"]*)\"");
+        return match.Success ? match.Groups["value"].Value : string.Empty;
+    }
+
+    private static float MatchFloat(string json, string key)
+    {
+        Match match = Regex.Match(
+            json,
+            $"\"{key}\"\\s*:\\s*(?<value>-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+        );
+        return match.Success ? ParseFloat(match.Groups["value"].Value) : 0f;
+    }
+
+    private static string MatchObjectBlock(string json, string key)
+    {
+        int keyIndex = json.IndexOf($"\"{key}\"", StringComparison.Ordinal);
+        if (keyIndex < 0)
+        {
+            return string.Empty;
+        }
+
+        int start = json.IndexOf('{', keyIndex);
+        return ReadBalanced(json, start, '{', '}');
+    }
+
+    private static string MatchArrayBlock(string json, string key)
+    {
+        int keyIndex = json.IndexOf($"\"{key}\"", StringComparison.Ordinal);
+        if (keyIndex < 0)
+        {
+            return string.Empty;
+        }
+
+        int start = json.IndexOf('[', keyIndex);
+        return ReadBalanced(json, start, '[', ']');
+    }
+
+    private static string ReadBalanced(string text, int start, char open, char close)
+    {
+        if (start < 0)
+        {
+            return string.Empty;
+        }
+
+        int depth = 0;
+        for (int i = start; i < text.Length; i++)
+        {
+            if (text[i] == open)
+            {
+                depth++;
+            }
+            else if (text[i] == close)
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return text.Substring(start, i - start + 1);
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static float ParseFloat(string value)
+    {
+        return float.Parse(value, CultureInfo.InvariantCulture);
     }
 }

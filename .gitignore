@@ -3,6 +3,13 @@ __pycache__/
 
 # Generated VR exports
 exports/
+outputs/
+UnityVRPrototype/Assets/Models/urinary_tract.obj
+UnityVRPrototype/Assets/Models/urinary_tract_unity.obj
+UnityVRPrototype/Assets/StreamingAssets/vr_route_unity.json
+UnityVRPrototype/Assets/Models/urinary_tract.obj.meta
+UnityVRPrototype/Assets/Models/urinary_tract_unity.obj.meta
+UnityVRPrototype/Assets/StreamingAssets/vr_route_unity.json.meta
 
 # Unity generated folders
 UnityVRPrototype/Library/

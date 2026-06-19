@@ -241,9 +241,10 @@ def choose_safe_bspline(path_points, volume, target_xyz, initial_params, extrapo
 
 def export_obj(volume, output_path):
     verts, faces, normals, _ = measure.marching_cubes(volume.astype(np.float32), level=0.5)
-    # skimage returns coordinates in array order (z, y, x). Unity-friendly export uses x, y, z.
-    xyz_verts = np.column_stack([verts[:, 2], verts[:, 1], verts[:, 0]])
-    xyz_normals = np.column_stack([normals[:, 2], normals[:, 1], normals[:, 0]])
+    # skimage returns coordinates in array order (z, y, x). Unity uses y as the up axis,
+    # so the mesh is exported with the same x,z,y mapping used by VrCaseLoader.MapPoint.
+    xyz_verts = np.column_stack([verts[:, 2], verts[:, 0], verts[:, 1]])
+    xyz_normals = np.column_stack([normals[:, 2], normals[:, 0], normals[:, 1]])
 
     with output_path.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write("# Urinary tract mesh generated from binary mask volume\n")
@@ -304,7 +305,7 @@ def build_export(args):
     route_csv = case_dir / "route.csv"
     route_json = case_dir / "vr_route_unity.json"
     manifest_json = case_dir / "case_manifest.json"
-    mesh_obj = case_dir / "urinary_tract.obj"
+    mesh_obj = case_dir / "urinary_tract_unity.obj"
 
     metrics = {
         "path_points": len(path_xyz),

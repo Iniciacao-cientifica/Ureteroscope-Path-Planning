@@ -6,37 +6,39 @@ visualizer for an automatically planned ureteroscopy path.
 It does not run the AI pipeline on the headset. Python exports a lightweight case package,
 and Unity displays the anatomy mesh, stone target, route, metrics, and camera-follow mode.
 
-## 1. Generate a VR case from Python
+## 1. Prepare the Unity case
 
 From the repository root:
 
 ```powershell
 python -m pip install -r requirements-vr-export.txt
-python vr_export_pipeline.py
+.\prepare_unity_case.ps1
 ```
 
-The default export is created at:
+This command generates the default export and copies the Unity-ready files into:
 
 ```text
-exports/murillo_sample_case/
+Assets/StreamingAssets/vr_route_unity.json
+Assets/Models/urinary_tract_unity.obj
 ```
 
-Important files:
+The source export remains available at `exports/murillo_sample_case/`.
 
-- `urinary_tract.obj`: 3D anatomy mesh generated from the binary mask stack.
-- `vr_route_unity.json`: route, points, metrics, and clinical notice for Unity.
-- `route.csv`: route points for analysis or spreadsheet inspection.
-- `case_manifest.json`: complete export metadata.
+## 2. Open and test in Unity
 
-## 2. Bring the exported case into Unity
+1. Open `UnityVRPrototype` in Unity.
+2. Wait for Unity to import the OBJ mesh.
+3. The editor setup script should automatically create:
+   - `VR Case Loader`
+   - a basic camera
+   - a directional light
+4. Press Play.
 
-1. Open `UnityVRPrototype` in Unity 6 or a recent Unity version with OpenXR support.
-2. Copy `exports/murillo_sample_case/vr_route_unity.json` to `Assets/StreamingAssets/`.
-3. Copy `exports/murillo_sample_case/urinary_tract.obj` to `Assets/Models/`.
-4. Create an empty GameObject named `VR Case Loader`.
-5. Add the `VrCaseLoader` component.
-6. Drag the imported urinary tract mesh object into `Urinary Tract Mesh`.
-7. Assign your XR Origin or camera rig to `Camera Rig`.
+If the scene is not created automatically, use the Unity menu:
+
+```text
+Murillo VR > Setup Sample Scene
+```
 
 ## 3. Enable VR for Meta Quest
 

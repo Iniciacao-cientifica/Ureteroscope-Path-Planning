@@ -1,337 +1,286 @@
-import numpy as np
-import pyvista as pv
 import time
+
+import numpy as np
 from scipy.spatial import KDTree
+
 import metrics
 
+try:
+    import pyvista as pv
+except ImportError:
+    pv = None
+
+
 class Viewer3D:
-    def __init__(self, volume, caminho, pedra_xyz, inicio_xyz, curva=None):
+    """Interactive PyVista viewer for the ureteroscopy path-planning demo."""
+
+    def __init__(
+        self,
+        volume,
+        caminho,
+        pedra_xyz,
+        inicio_xyz,
+        curva=None,
+        screenshot_path="pyvista_view.png",
+        off_screen=False,
+    ):
+        if pv is None:
+            raise ImportError(
+                "PyVista/VTK nao esta instalado. Instale com: python -m pip install pyvista vtk"
+            )
+
         self.volume = volume
-        self.caminho = caminho
+        self.caminho = caminho or []
         self.pedra_xyz = pedra_xyz
         self.inicio_xyz = inicio_xyz
         self.curva = curva
-        self.curva_array = np.array(curva) if curva else None
-        
-        self.plotter = pv.Plotter()
+        self.curva_array = np.asarray(curva, dtype=float) if curva else None
+        self.screenshot_path = screenshot_path
+
+        self.plotter = pv.Plotter(off_screen=off_screen)
         self.actors = {}
-        
-        # Estados de visibilidade
         self.show_a_star = False
         self.show_smoothed = True
-        self.show_dotted = False
+        self.show_points = False
         self.show_external = False
         self.is_animating = False
-        
-        # Relatório de extrapolação
+
         self.relatorio = self.calcular_extrapolacao() if curva else None
-        
-        # Inicialização dos componentes
+
         self.setup_volume()
-        self.setup_caminhos()
-        self.setup_pontos_interesse()
+        self.setup_paths()
+        self.setup_landmarks()
         self.setup_ui()
-        
+        self.setup_camera()
+
     def calcular_extrapolacao(self):
-        """Calcula os pontos fora do volume"""
-        # Implemente sua função verificar_extrapolacao aqui
-        relatorio = metrics.verificar_extrapolacao(self.curva, self.volume, limiar_distancia=0.1)
-        return relatorio
+        return metrics.verificar_extrapolacao(self.curva, self.volume, limiar_distancia=0.1)
 
     def setup_volume(self):
-        """Configura a visualização do volume"""
-        # 1. Suavização do volume
-        volume_suavizado = self.volume.astype(float)
-        
-        
-        volume_corrigido = np.transpose(volume_suavizado, (2, 1, 0))
-        grid = pv.ImageData(
-            dimensions=volume_corrigido.shape,
-            spacing=(1, 1, 1),
-            origin=(0, 0, 0)
-        )
+        volume_corrigido = np.transpose(self.volume.astype(float), (2, 1, 0))
+        grid = pv.ImageData(dimensions=volume_corrigido.shape, spacing=(1, 1, 1), origin=(0, 0, 0))
         grid.point_data["values"] = volume_corrigido.flatten(order="F")
-        
-        # 2. Extração de superfície
         contours = grid.contour([0.1])
-        
-        # 3. Suavização da malha
+
         if contours.n_points > 0:
-            suavizado = contours.smooth(
-                n_iter=11, 
-                relaxation_factor=0.1
-            )
-            suavizado = suavizado.fill_holes(100)
+            mesh = contours.smooth(n_iter=11, relaxation_factor=0.1).fill_holes(100)
         else:
-            suavizado = contours
-        
-        # 4. Adição da malha
-        self.plotter.add_mesh(
-            suavizado, 
-            opacity=0.7, 
-            color=(240, 30, 0), 
-            name='Volume',
+            mesh = contours
+
+        self.actors["volume"] = self.plotter.add_mesh(
+            mesh,
+            opacity=0.35,
+            color=(240, 30, 0),
+            name="Volume",
             smooth_shading=True,
             show_edges=False,
             pbr=True,
             metallic=0.0,
             ambient=0.3,
             diffuse=0.7,
-            specular=0.5
+            specular=0.5,
         )
 
-    def setup_caminhos(self):
-        """Configura os caminhos e pontos relacionados"""
-        # Caminho A* original
+    def setup_paths(self):
         if self.caminho:
-            caminho_array = np.array(self.caminho)
-            self.actors['a_star'] = self.plotter.add_mesh(
-                pv.Spline(caminho_array), 
-                color='green', 
+            caminho_array = np.asarray(self.caminho, dtype=float)
+            self.actors["a_star"] = self.plotter.add_mesh(
+                pv.Spline(caminho_array),
+                color="lime",
                 line_width=3,
-                name='A_star'
+                name="A_star",
             )
-            self.actors['a_star'].SetVisibility(self.show_a_star)
+            self.actors["a_star"].SetVisibility(self.show_a_star)
 
-        # Curva Suavizada
         if self.curva_array is not None:
-            self.actors['curva'] = self.plotter.add_mesh(
+            self.actors["curva"] = self.plotter.add_mesh(
                 pv.Spline(self.curva_array),
-                color='blue',
-                line_width=5,
-                name='Smoothed'
+                color="dodgerblue",
+                line_width=6,
+                name="Smoothed",
             )
-            self.actors['curva'].SetVisibility(self.show_smoothed)
+            self.actors["curva"].SetVisibility(self.show_smoothed)
+            self.setup_curve_points()
 
-        # Pontos fora do volume
-        self.setup_extrapolacao()
-        
-        # Pontos e linhas tracejadas
-        self.setup_pontos_linhas()
+        self.setup_extrapolation()
 
-    def setup_extrapolacao(self):
-        """Configura visualização dos pontos fora do volume"""
-        if not self.relatorio:
-            return
-            
-        pontos_actor = []
-        
-        # Pontos fora do volume
-        if self.relatorio['indices_fora']:
-            pontos_fora = self.curva_array[self.relatorio['indices_fora']]
-            pontos_plot = pv.PolyData(pontos_fora)
-            pontos_actor.append(self.plotter.add_mesh(
-                pontos_plot, color='red', point_size=10,
-                render_points_as_spheres=True, label='Fora do volume'
-            ))
-            
-            # Conexões com o volume
-            pontos_volume = np.argwhere(self.volume == 1)
-            tree_volume = KDTree(pontos_volume)
-            
-            for p in pontos_fora:
-                ponto_vol = np.array([p[2], p[1], p[0]])
-                _, idx = tree_volume.query(ponto_vol)
-                ponto_surface = pontos_volume[idx][::-1]
-                linha = pv.Line(p, ponto_surface)
-                pontos_actor.append(self.plotter.add_mesh(linha, color='yellow', line_width=2))
-        
-        # Texto informativo
-        pontos_actor.append(self.plotter.add_text(
-            f"Extrapolação: {len(self.relatorio['indices_fora'])} pontos fora", 
-            position='lower_right', color='black'
-        ))
-        
-        self.actors['external'] = pontos_actor
-        for actor in self.actors['external']:
-            actor.SetVisibility(self.show_external)
-
-    def setup_pontos_linhas(self):
-        """Configura pontos e linhas tracejadas ao longo da curva"""
-        if self.curva_array is None:
-            return
-            
-        # Pontos azuis ao longo da curva
+    def setup_curve_points(self):
         points_actor = self.plotter.add_mesh(
             pv.PolyData(self.curva_array),
-            color='blue',
-            point_size=5,
+            color="dodgerblue",
+            point_size=6,
             render_points_as_spheres=True,
-            name='Points'
+            name="Curve Points",
         )
-        
-        # Linhas tracejadas
-        dashed_points = []
-        lines = []
-        dash_length = 0.1
-        gap_length = 0.05
-        
-        for i in range(len(self.curva_array)-1):
-            start = self.curva_array[i]
-            end = self.curva_array[i+1]
-            direction = end - start
-            length = np.linalg.norm(direction)
-            direction /= length
-            
-            current_pos = 0.0
-            while current_pos < length:
-                dash_start = start + direction * current_pos
-                current_pos += dash_length
-                dash_end = start + direction * min(current_pos, length)
-                
-                idx = len(dashed_points)
-                dashed_points.extend([dash_start, dash_end])
-                lines.append([2, idx, idx+1])
-                
-                current_pos += gap_length
-        
-        if dashed_points:
-            dashed_lines = pv.PolyData()
-            dashed_lines.points = dashed_points
-            dashed_lines.lines = lines
-            
-            lines_actor = self.plotter.add_mesh(
-                dashed_lines,
-                color='black',
-                line_width=2,
-                name='Dashed Lines'
-            )
-            self.actors['dotted'] = (points_actor, lines_actor)
-            for actor in self.actors['dotted']:
-                actor.SetVisibility(self.show_dotted)
+        points_actor.SetVisibility(self.show_points)
+        self.actors["points"] = points_actor
 
-    def setup_pontos_interesse(self):
-        """Configura os pontos de interesse (pedra e início)"""
-        self.actors['pedra'] = self.plotter.add_mesh(
-            pv.Sphere(radius=2, center=self.pedra_xyz), 
-            color=(150, 100, 0),
-            name='Pedra'
+    def setup_extrapolation(self):
+        if not self.relatorio:
+            return
+
+        external_actors = []
+        if self.relatorio["indices_fora"]:
+            outside_points = self.curva_array[self.relatorio["indices_fora"]]
+            outside_actor = self.plotter.add_mesh(
+                pv.PolyData(outside_points),
+                color="red",
+                point_size=12,
+                render_points_as_spheres=True,
+                label="Fora do volume",
+            )
+            external_actors.append(outside_actor)
+
+            volume_points = np.argwhere(self.volume == 1)
+            tree_volume = KDTree(volume_points)
+            for point in outside_points:
+                point_volume = np.array([point[2], point[1], point[0]])
+                _, idx = tree_volume.query(point_volume)
+                surface_point = volume_points[idx][::-1]
+                external_actors.append(self.plotter.add_mesh(pv.Line(point, surface_point), color="yellow", line_width=2))
+
+        text_actor = self.plotter.add_text(
+            f"Extrapolacao: {len(self.relatorio['indices_fora'])} pontos fora",
+            position="lower_right",
+            color="black",
+            font_size=10,
         )
-        
-        self.actors['inicio'] = self.plotter.add_mesh(
-            pv.Sphere(radius=1, center=self.inicio_xyz), 
-            color='green',
-            name='Inicio'
+        external_actors.append(text_actor)
+
+        self.actors["external"] = external_actors
+        for actor in external_actors:
+            actor.SetVisibility(self.show_external)
+
+    def setup_landmarks(self):
+        self.actors["pedra"] = self.plotter.add_mesh(
+            pv.Sphere(radius=2.5, center=self.pedra_xyz),
+            color=(255, 190, 0),
+            name="Calculo",
+        )
+        self.actors["inicio"] = self.plotter.add_mesh(
+            pv.Sphere(radius=2.0, center=self.inicio_xyz),
+            color="green",
+            name="Inicio",
         )
 
     def setup_ui(self):
-        """Configura a interface do usuário e callbacks"""
-        # Texto de ajuda
-        help_text = """Controles:
-    A - Toggle A*
-    Z - Toggle Suavizada
-    D - Toggle Dotted
-    C - Toggle External Check
-    M - Toggle Animação"""
-        
-        self.plotter.add_text(help_text, position='upper_left', color='black', font_size=9)
-        
-        # Registro de eventos de teclado
-        self.plotter.add_key_event('a', self.toggle_a_star)
-        self.plotter.add_key_event('z', self.toggle_smoothed)
-        self.plotter.add_key_event('d', self.toggle_dotted)
-        self.plotter.add_key_event('c', self.toggle_external)
-        self.plotter.add_key_event('m', self.toggle_animation)
+        help_text = (
+            "Controles:\n"
+            "A - Liga/desliga A*\n"
+            "Z - Liga/desliga curva suavizada\n"
+            "D - Liga/desliga pontos da curva\n"
+            "C - Liga/desliga checagem externa\n"
+            "M - Animar camera pela rota\n"
+            "R - Resetar camera\n"
+            "S - Salvar screenshot"
+        )
+        self.plotter.add_text(help_text, position="upper_left", color="black", font_size=9)
+        self.plotter.add_key_event("a", self.toggle_a_star)
+        self.plotter.add_key_event("z", self.toggle_smoothed)
+        self.plotter.add_key_event("d", self.toggle_points)
+        self.plotter.add_key_event("c", self.toggle_external)
+        self.plotter.add_key_event("m", self.toggle_animation)
+        self.plotter.add_key_event("r", self.reset_camera)
+        self.plotter.add_key_event("s", self.save_screenshot)
 
-    # Métodos de toggle
+    def setup_camera(self):
+        points = self.curva_array if self.curva_array is not None else np.asarray(self.caminho, dtype=float)
+        if points is None or len(points) == 0:
+            self.plotter.view_isometric()
+            self.plotter.reset_camera()
+            return
+
+        center = points.mean(axis=0)
+        extent = np.ptp(points, axis=0)
+        distance = max(float(np.max(extent)) * 1.9, 90.0)
+        self.plotter.camera.position = (
+            center[0] + distance,
+            center[1] - distance,
+            center[2] + distance * 0.55,
+        )
+        self.plotter.camera.focal_point = tuple(center)
+        self.plotter.camera.up = (0, 0, 1)
+        self.plotter.reset_camera()
+
     def toggle_a_star(self):
         self.show_a_star = not self.show_a_star
-        self.actors['a_star'].SetVisibility(self.show_a_star)
+        if "a_star" in self.actors:
+            self.actors["a_star"].SetVisibility(self.show_a_star)
         self.plotter.update()
 
     def toggle_smoothed(self):
         self.show_smoothed = not self.show_smoothed
-        self.actors['curva'].SetVisibility(self.show_smoothed)
+        if "curva" in self.actors:
+            self.actors["curva"].SetVisibility(self.show_smoothed)
         self.plotter.update()
 
-    def toggle_dotted(self):
-        self.show_dotted = not self.show_dotted
-        if 'dotted' in self.actors:
-            for actor in self.actors['dotted']:
-                actor.SetVisibility(self.show_dotted)
+    def toggle_points(self):
+        self.show_points = not self.show_points
+        if "points" in self.actors:
+            self.actors["points"].SetVisibility(self.show_points)
         self.plotter.update()
 
     def toggle_external(self):
         self.show_external = not self.show_external
-        if 'external' in self.actors:
-            for actor in self.actors['external']:
+        if "external" in self.actors:
+            for actor in self.actors["external"]:
                 actor.SetVisibility(self.show_external)
-        
-        # Exibe relatório no console
+
         if self.relatorio:
-            print("\n--- Relatório de Extrapolação ---")
+            print("\n--- Relatorio de extrapolacao ---")
             print(f"Pontos totais: {self.relatorio['total_pontos']}")
             print(f"Pontos fora: {self.relatorio['pontos_fora']} ({self.relatorio['percentual_fora']:.2f}%)")
-            print(f"Distância máxima à superfície: {self.relatorio['distancia_maxima']:.2f} voxels")
-            print(f"Distância média: {self.relatorio['distancia_media']:.2f} voxels")
-            
-            if self.relatorio['pontos_fora'] > 0:
-                print("\nCoordenadas dos pontos fora:")
-                print(self.relatorio['coordenadas_fora'])
-        
+            print(f"Distancia maxima a superficie: {self.relatorio['distancia_maxima']:.2f} voxels")
+            print(f"Distancia media: {self.relatorio['distancia_media']:.2f} voxels")
+
         self.plotter.update()
 
     def toggle_animation(self):
         self.is_animating = not self.is_animating
-        
         if self.is_animating and self.curva_array is not None:
-            self.plotter.add_text("Camera: ON", name='anim_status',
-                               position='upper_right', color='darkblue', font_size=10)
-            self.executar_animacao()
+            self.plotter.add_text("Camera: ON", name="anim_status", position="upper_right", color="darkblue", font_size=10)
+            self.run_animation()
         else:
-            self.plotter.reset_camera()
-            self.plotter.add_text("Camera: OFF", name='anim_status',
-                               position='upper_right', color='darkblue', font_size=10)
-            self.plotter.update()
+            self.plotter.add_text("Camera: OFF", name="anim_status", position="upper_right", color="darkblue", font_size=10)
+            self.reset_camera()
 
-    def executar_animacao(self):
-        """Executa a animação da câmera ao longo da curva"""
-        # Configura posição inicial
-        self.plotter.camera_position = [
-            self.curva_array[0],
-            self.curva_array[1],
-            (0, 0, 1)
-        ]
-        
+    def reset_camera(self):
+        self.setup_camera()
+        self.plotter.update()
+
+    def save_screenshot(self):
+        self.plotter.screenshot(self.screenshot_path)
+        print(f"Screenshot salvo em: {self.screenshot_path}")
+
+    def run_animation(self):
         start_time = time.time()
-        duration = 15
+        duration = 15.0
         total_points = len(self.curva_array)
-        
+
         while self.is_animating and (time.time() - start_time) < duration:
-            elapsed = time.time() - start_time
-            t = elapsed / duration
-            
-            if t >= 1.0:
-                break
-                
-            # Interpolação da posição
+            t = min((time.time() - start_time) / duration, 1.0)
             idx = t * (total_points - 1)
             idx0 = int(np.floor(idx))
             idx1 = min(idx0 + 1, total_points - 1)
             alpha = idx - idx0
-            
+
             current_pos = (1 - alpha) * self.curva_array[idx0] + alpha * self.curva_array[idx1]
-            
-            # Ponto de foco
-            look_ahead = min(idx0 + 3, total_points - 1)
+            look_ahead = min(idx0 + 4, total_points - 1)
             focal_point = self.curva_array[look_ahead]
-            
-            # Atualiza câmera
-            self.plotter.camera.position = current_pos
-            self.plotter.camera.focal_point = focal_point
+            direction = focal_point - current_pos
+            norm = np.linalg.norm(direction)
+            direction = direction / norm if norm > 1e-6 else np.array([1.0, 0.0, 0.0])
+            camera_pos = current_pos - direction * 12 + np.array([0, 0, 6])
+
+            self.plotter.camera.position = tuple(camera_pos)
+            self.plotter.camera.focal_point = tuple(focal_point)
             self.plotter.camera.up = (0, 0, 1)
-            
             self.plotter.update()
             time.sleep(0.03)
-        
-        # Finalização da animação
+
         self.is_animating = False
-        self.plotter.reset_camera()
-        self.plotter.add_text("Camera: OFF", name='anim_status',
-                           position='upper_right', color='darkblue', font_size=10)
+        self.plotter.add_text("Camera: OFF", name="anim_status", position="upper_right", color="darkblue", font_size=10)
         self.plotter.update()
 
     def show(self):
-        """Exibe a visualização 3D"""
-        self.plotter.show(title='Trajetória 3D com Controles')
-        
+        self.plotter.show(title="Trajetoria 3D - PyVista")
