@@ -58,8 +58,19 @@ Outputs are written to `exports/murillo_sample_case/` and copied into `UnityVRPr
 - `route.csv`: A* and B-Spline route points for analysis.
 - `case_manifest.json`: export metadata and clinical/coordinate notes.
 
-Open `UnityVRPrototype/` in Unity, wait for import, and press Play. If Unity does not
-create the loader automatically, use `Murillo VR > Setup Sample Scene`.
+Open `UnityVRPrototype/` in Unity and wait for package/asset import. The Unity project now
+declares the Quest/OpenXR packages in `Packages/manifest.json`; use
+`Murillo VR > Setup Sample Scene` to create the `Murillo XR Origin`, tracked camera,
+case loader, sample scene, and Build Settings entry. Then enable OpenXR for Android in
+Project Settings > XR Plug-in Management, switch the build target to Android, and build
+to the Meta Quest.
+
+Quest controller controls:
+
+- `A` or `X`: show/hide the original A* path.
+- `B` or `Y`: show/hide the smoothed path.
+- trigger: start/stop camera-follow mode.
+- thumbstick up/down: adjust anatomy mesh opacity.
 
 This is not a validated clinical tool and must not be used for diagnosis, treatment, or
 intra-operative navigation.

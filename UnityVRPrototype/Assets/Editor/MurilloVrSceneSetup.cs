@@ -1,12 +1,17 @@
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [InitializeOnLoad]
 public static class MurilloVrSceneSetup
 {
     private const string RoutePath = "Assets/StreamingAssets/vr_route_unity.json";
     private const string MeshPath = "Assets/Models/urinary_tract_unity.obj";
+    private const string ScenePath = "Assets/Scenes/MurilloQuestSample.unity";
+    private const string XrOriginName = "Murillo XR Origin";
 
     static MurilloVrSceneSetup()
     {
@@ -16,6 +21,18 @@ public static class MurilloVrSceneSetup
     [MenuItem("Murillo VR/Setup Sample Scene")]
     public static void SetupSampleScene()
     {
+        SetupSampleSceneInternal(true);
+    }
+
+    public static void SetupSampleSceneBatch()
+    {
+        SetupSampleSceneInternal(false);
+    }
+
+    private static void SetupSampleSceneInternal(bool showDialog)
+    {
+        ConfigureQuestProject();
+
         if (!File.Exists(RoutePath))
         {
             Debug.LogWarning($"Route file not found: {RoutePath}");
@@ -35,20 +52,40 @@ public static class MurilloVrSceneSetup
             return;
         }
 
-        EnsureCamera();
+        Transform xrOrigin = EnsureXrRig();
         EnsureLight();
-        EnsureLoader(meshAsset);
+        EnsureLoader(meshAsset, xrOrigin);
+        SaveSampleScene();
+        EnsureSceneInBuildSettings();
 
-        EditorUtility.DisplayDialog(
-            "Murillo VR",
-            "Sample scene is ready. Press Play to test the route visualizer.",
-            "OK"
-        );
+        if (showDialog)
+        {
+            EditorUtility.DisplayDialog(
+                "Murillo VR",
+                "Quest-ready sample scene is prepared. Confirm OpenXR is enabled for Android in XR Plug-in Management, then press Play or build to the headset.",
+                "OK"
+            );
+        }
+    }
+
+    [MenuItem("Murillo VR/Configure Quest Project")]
+    public static void ConfigureQuestProject()
+    {
+        PlayerSettings.companyName = "Murillo Research";
+        PlayerSettings.productName = "Murillo Ureteroscopy VR";
+        PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "br.edu.murillo.ureteroscopyvr");
+        PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
+        PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
+        PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
+        PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan });
+
+        Debug.Log("Murillo VR Android/Quest player settings applied. Use XR Plug-in Management to enable OpenXR for Android if Unity has not created those settings yet.");
     }
 
     private static void AutoSetupWhenAssetsExist()
     {
-        if (Object.FindObjectOfType<VrCaseLoader>() != null)
+        if (Object.FindAnyObjectByType<VrCaseLoader>() != null)
         {
             return;
         }
@@ -64,15 +101,15 @@ public static class MurilloVrSceneSetup
             return;
         }
 
-        EnsureCamera();
+        Transform xrOrigin = EnsureXrRig();
         EnsureLight();
-        EnsureLoader(meshAsset);
+        EnsureLoader(meshAsset, xrOrigin);
         Debug.Log("Murillo VR sample scene was prepared automatically. Press Play to test it.");
     }
 
-    private static void EnsureLoader(GameObject meshAsset)
+    private static void EnsureLoader(GameObject meshAsset, Transform xrOrigin)
     {
-        VrCaseLoader existingLoader = Object.FindObjectOfType<VrCaseLoader>();
+        VrCaseLoader existingLoader = Object.FindAnyObjectByType<VrCaseLoader>();
         GameObject loaderObject = existingLoader != null
             ? existingLoader.gameObject
             : new GameObject("VR Case Loader");
@@ -85,32 +122,86 @@ public static class MurilloVrSceneSetup
 
         loader.routeFileName = "vr_route_unity.json";
         loader.urinaryTractMesh = meshAsset;
-        loader.cameraRig = Camera.main != null ? Camera.main.transform : null;
+        loader.cameraRig = xrOrigin != null ? xrOrigin : Camera.main != null ? Camera.main.transform : null;
         loader.voxelToMeterScale = 0.002f;
         loader.meshOpacity = 0.35f;
+        loader.enableQuestControllerInput = true;
 
         EditorUtility.SetDirty(loaderObject);
     }
 
-    private static void EnsureCamera()
+    private static void SaveSampleScene()
     {
-        if (Camera.main != null)
+        Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
+        EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), ScenePath);
+    }
+
+    private static void EnsureSceneInBuildSettings()
+    {
+        EditorBuildSettingsScene[] scenes = EditorBuildSettings.scenes;
+        foreach (EditorBuildSettingsScene scene in scenes)
         {
-            return;
+            if (scene.path == ScenePath)
+            {
+                scene.enabled = true;
+                EditorBuildSettings.scenes = scenes;
+                return;
+            }
         }
 
-        GameObject cameraObject = new GameObject("Main Camera");
+        EditorBuildSettingsScene[] updatedScenes = new EditorBuildSettingsScene[scenes.Length + 1];
+        for (int i = 0; i < scenes.Length; i++)
+        {
+            updatedScenes[i] = scenes[i];
+        }
+
+        updatedScenes[updatedScenes.Length - 1] = new EditorBuildSettingsScene(ScenePath, true);
+        EditorBuildSettings.scenes = updatedScenes;
+    }
+
+    private static Transform EnsureXrRig()
+    {
+        GameObject origin = GameObject.Find(XrOriginName);
+        if (origin == null)
+        {
+            origin = new GameObject(XrOriginName);
+            origin.transform.position = new Vector3(0.55f, 0.35f, -0.55f);
+            origin.transform.rotation = Quaternion.Euler(25f, -35f, 0f);
+        }
+
+        Camera camera = Camera.main;
+        GameObject cameraObject = camera != null ? camera.gameObject : new GameObject("Main Camera");
         cameraObject.tag = "MainCamera";
-        Camera camera = cameraObject.AddComponent<Camera>();
+        cameraObject.transform.SetParent(origin.transform, false);
+        cameraObject.transform.localPosition = Vector3.zero;
+        cameraObject.transform.localRotation = Quaternion.identity;
+
+        if (camera == null)
+        {
+            camera = cameraObject.AddComponent<Camera>();
+        }
+
         camera.clearFlags = CameraClearFlags.Skybox;
-        cameraObject.AddComponent<AudioListener>();
-        cameraObject.transform.position = new Vector3(0.55f, 0.35f, -0.55f);
-        cameraObject.transform.rotation = Quaternion.Euler(25f, -35f, 0f);
+        camera.nearClipPlane = 0.01f;
+
+        if (cameraObject.GetComponent<AudioListener>() == null)
+        {
+            cameraObject.AddComponent<AudioListener>();
+        }
+
+        if (cameraObject.GetComponent<XrHeadPoseDriver>() == null)
+        {
+            cameraObject.AddComponent<XrHeadPoseDriver>();
+        }
+
+        EditorUtility.SetDirty(origin);
+        EditorUtility.SetDirty(cameraObject);
+        return origin.transform;
     }
 
     private static void EnsureLight()
     {
-        if (Object.FindObjectOfType<Light>() != null)
+        if (Object.FindAnyObjectByType<Light>() != null)
         {
             return;
         }

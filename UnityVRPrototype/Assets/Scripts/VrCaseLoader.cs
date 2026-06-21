@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
+using UnityEngine.XR;
 
 public class VrCaseLoader : MonoBehaviour
 {
@@ -35,6 +37,8 @@ public class VrCaseLoader : MonoBehaviour
     public KeyCode increaseOpacityKey = KeyCode.Equals;
     public KeyCode decreaseOpacityKey = KeyCode.Minus;
     public float followDurationSeconds = 18f;
+    public bool enableQuestControllerInput = true;
+    public float controllerOpacityRepeatSeconds = 0.18f;
 
     private VrRouteData routeData;
     private GameObject originalPathObject;
@@ -44,6 +48,11 @@ public class VrCaseLoader : MonoBehaviour
     private Material meshMaterial;
     private float followTimer;
     private bool followingRoute;
+    private bool previousPrimaryButton;
+    private bool previousSecondaryButton;
+    private bool previousTriggerButton;
+    private float nextControllerOpacityTime;
+    private readonly List<InputDevice> controllerDevices = new List<InputDevice>();
 
     private void Start()
     {
@@ -59,36 +68,154 @@ public class VrCaseLoader : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(toggleOriginalKey) && originalPathObject != null)
-        {
-            originalPathObject.SetActive(!originalPathObject.activeSelf);
-        }
+        HandleKeyboardInput();
 
-        if (Input.GetKeyDown(toggleSmoothedKey) && smoothedPathObject != null)
+        if (enableQuestControllerInput)
         {
-            smoothedPathObject.SetActive(!smoothedPathObject.activeSelf);
-        }
-
-        if (Input.GetKeyDown(increaseOpacityKey))
-        {
-            SetMeshOpacity(Mathf.Clamp01(meshOpacity + 0.05f));
-        }
-
-        if (Input.GetKeyDown(decreaseOpacityKey))
-        {
-            SetMeshOpacity(Mathf.Clamp01(meshOpacity - 0.05f));
-        }
-
-        if (Input.GetKeyDown(followRouteKey))
-        {
-            followingRoute = !followingRoute;
-            followTimer = 0f;
+            HandleQuestControllerInput();
         }
 
         if (followingRoute)
         {
             FollowSmoothedRoute();
         }
+    }
+
+    private void HandleKeyboardInput()
+    {
+        if (Input.GetKeyDown(toggleOriginalKey))
+        {
+            ToggleOriginalPath();
+        }
+
+        if (Input.GetKeyDown(toggleSmoothedKey))
+        {
+            ToggleSmoothedPath();
+        }
+
+        if (Input.GetKeyDown(increaseOpacityKey))
+        {
+            AdjustMeshOpacity(0.05f);
+        }
+
+        if (Input.GetKeyDown(decreaseOpacityKey))
+        {
+            AdjustMeshOpacity(-0.05f);
+        }
+
+        if (Input.GetKeyDown(followRouteKey))
+        {
+            ToggleRouteFollow();
+        }
+    }
+
+    private void HandleQuestControllerInput()
+    {
+        bool primaryButton = false;
+        bool secondaryButton = false;
+        bool triggerButton = false;
+        Vector2 thumbstick = Vector2.zero;
+
+        ReadController(InputDeviceCharacteristics.Left, ref primaryButton, ref secondaryButton, ref triggerButton, ref thumbstick);
+        ReadController(InputDeviceCharacteristics.Right, ref primaryButton, ref secondaryButton, ref triggerButton, ref thumbstick);
+
+        if (primaryButton && !previousPrimaryButton)
+        {
+            ToggleOriginalPath();
+        }
+
+        if (secondaryButton && !previousSecondaryButton)
+        {
+            ToggleSmoothedPath();
+        }
+
+        if (triggerButton && !previousTriggerButton)
+        {
+            ToggleRouteFollow();
+        }
+
+        if (Mathf.Abs(thumbstick.y) > 0.65f && Time.time >= nextControllerOpacityTime)
+        {
+            AdjustMeshOpacity(thumbstick.y > 0f ? 0.05f : -0.05f);
+            nextControllerOpacityTime = Time.time + controllerOpacityRepeatSeconds;
+        }
+
+        previousPrimaryButton = primaryButton;
+        previousSecondaryButton = secondaryButton;
+        previousTriggerButton = triggerButton;
+    }
+
+    private void ReadController(
+        InputDeviceCharacteristics hand,
+        ref bool primaryButton,
+        ref bool secondaryButton,
+        ref bool triggerButton,
+        ref Vector2 thumbstick
+    )
+    {
+        controllerDevices.Clear();
+        InputDevices.GetDevicesWithCharacteristics(
+            InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.HeldInHand | hand,
+            controllerDevices
+        );
+
+        if (controllerDevices.Count == 0)
+        {
+            return;
+        }
+
+        InputDevice device = controllerDevices[0];
+        if (!device.isValid)
+        {
+            return;
+        }
+
+        if (device.TryGetFeatureValue(CommonUsages.primaryButton, out bool primary))
+        {
+            primaryButton |= primary;
+        }
+
+        if (device.TryGetFeatureValue(CommonUsages.secondaryButton, out bool secondary))
+        {
+            secondaryButton |= secondary;
+        }
+
+        if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool trigger))
+        {
+            triggerButton |= trigger;
+        }
+
+        if (device.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 axis) && axis.sqrMagnitude > thumbstick.sqrMagnitude)
+        {
+            thumbstick = axis;
+        }
+    }
+
+    private void ToggleOriginalPath()
+    {
+        if (originalPathObject != null)
+        {
+            originalPathObject.SetActive(!originalPathObject.activeSelf);
+        }
+    }
+
+    private void ToggleSmoothedPath()
+    {
+        if (smoothedPathObject != null)
+        {
+            smoothedPathObject.SetActive(!smoothedPathObject.activeSelf);
+        }
+    }
+
+    private void ToggleRouteFollow()
+    {
+        followingRoute = !followingRoute;
+        followTimer = 0f;
+    }
+
+    private void AdjustMeshOpacity(float delta)
+    {
+        SetMeshOpacity(Mathf.Clamp01(meshOpacity + delta));
     }
 
     private void EnsureSceneRoot()
@@ -219,6 +346,8 @@ public class VrCaseLoader : MonoBehaviour
             $"Outside points: {metrics.outside_points}\n" +
             $"Curvature max: {metrics.curvature_max:F3}\n" +
             $"Torsion max: {metrics.torsion_max:F3}\n" +
+            "Quest: A/X original, B/Y smoothed\n" +
+            "Trigger follow, thumbstick opacity\n" +
             "Prototype for training/planning only";
     }
 

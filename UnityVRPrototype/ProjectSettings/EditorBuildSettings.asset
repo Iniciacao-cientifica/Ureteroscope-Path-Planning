@@ -4,5 +4,9 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
-  m_configObjects: {}
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/MurilloQuestSample.unity
+    guid: 94c6a32d11bb401409a1866ee55f56bb
+  m_configObjects:
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 755353269f92ad64aa59e5ede00e705a, type: 2}
