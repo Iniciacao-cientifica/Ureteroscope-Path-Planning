@@ -4,6 +4,9 @@ __pycache__/
 # Generated VR exports
 exports/
 outputs/
+cases/
+cases_test/
+UnityVRPrototype/Assets/StreamingAssets/Cases/
 UnityVRPrototype/Assets/Models/urinary_tract.obj
 UnityVRPrototype/Assets/Models/urinary_tract_unity.obj
 UnityVRPrototype/Assets/StreamingAssets/vr_route_unity.json

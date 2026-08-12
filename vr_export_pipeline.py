@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import splprep, splev
 from scipy.ndimage import map_coordinates
+from scipy import sparse
 from scipy.spatial import KDTree
 from skimage import measure
 
@@ -157,6 +158,60 @@ def select_route_points(points, ratio):
     return path_planning.reduzir_pontos_porcentagem(points, porcentagem=ratio)
 
 
+def resample_polyline(points, sample_count):
+    array = np.asarray(points, dtype=float)
+    if len(array) < 2 or sample_count <= len(array):
+        return [tuple(point) for point in array]
+
+    segment_lengths = np.linalg.norm(np.diff(array, axis=0), axis=1)
+    cumulative = np.concatenate([[0.0], np.cumsum(segment_lengths)])
+    total_length = cumulative[-1]
+    if total_length <= 1e-9:
+        return [tuple(point) for point in array]
+
+    distances = np.linspace(0.0, total_length, sample_count)
+    resampled = np.empty((sample_count, 3), dtype=float)
+    for axis in range(3):
+        resampled[:, axis] = np.interp(distances, cumulative, array[:, axis])
+
+    resampled[0] = array[0]
+    resampled[-1] = array[-1]
+    return [tuple(point) for point in resampled]
+
+
+def build_visual_route(points, volume, sample_count, extrapolation_threshold):
+    array = np.asarray(points, dtype=float)
+    if len(array) < 2:
+        return [tuple(point) for point in array], "validated"
+
+    sample_count = max(int(sample_count), len(array))
+    candidates = []
+
+    if len(array) >= 4 and sample_count > len(array):
+        try:
+            spline_order = min(3, len(array) - 1)
+            tck, _ = splprep(array.T, s=0, k=spline_order)
+            u_new = np.linspace(0.0, 1.0, sample_count)
+            spline = np.column_stack(splev(u_new, tck))
+            spline[0] = array[0]
+            spline[-1] = array[-1]
+            candidates.append(("spline", [tuple(point) for point in spline]))
+        except Exception:
+            pass
+
+    if sample_count > len(array):
+        candidates.append(("linear", resample_polyline(array, sample_count)))
+
+    candidates.append(("validated", [tuple(point) for point in array]))
+
+    for source, candidate in candidates:
+        extrapolation = check_extrapolation(candidate, volume, threshold=extrapolation_threshold)
+        if extrapolation["outside_points"] == 0:
+            return candidate, source
+
+    return candidates[-1][1], candidates[-1][0]
+
+
 def load_best_bspline_params(csv_path):
     defaults = {"order": 3, "smooth_factor": 1.0}
     if not csv_path or not csv_path.exists():
@@ -239,8 +294,64 @@ def choose_safe_bspline(path_points, volume, target_xyz, initial_params, extrapo
     return best
 
 
-def export_obj(volume, output_path):
+def smooth_mesh_vertices(vertices, faces, iterations, relaxation):
+    iterations = max(0, int(iterations))
+    relaxation = float(relaxation)
+    if iterations == 0 or relaxation <= 0.0 or len(vertices) == 0:
+        return vertices
+
+    edges = np.vstack(
+        [
+            faces[:, [0, 1]],
+            faces[:, [1, 0]],
+            faces[:, [1, 2]],
+            faces[:, [2, 1]],
+            faces[:, [2, 0]],
+            faces[:, [0, 2]],
+        ]
+    )
+    adjacency = sparse.coo_matrix(
+        (np.ones(len(edges), dtype=np.float32), (edges[:, 0], edges[:, 1])),
+        shape=(len(vertices), len(vertices)),
+    ).tocsr()
+    degrees = np.asarray(adjacency.sum(axis=1)).ravel()
+    nonzero = degrees > 0
+    inverse_degrees = np.zeros_like(degrees, dtype=np.float32)
+    inverse_degrees[nonzero] = 1.0 / degrees[nonzero]
+    averaging = sparse.diags(inverse_degrees).dot(adjacency)
+
+    smoothed = vertices.astype(float, copy=True)
+    for _ in range(iterations):
+        neighbor_average = averaging.dot(smoothed)
+        smoothed[nonzero] += relaxation * (neighbor_average[nonzero] - smoothed[nonzero])
+
+    return smoothed
+
+
+def calculate_vertex_normals(vertices, faces):
+    normals = np.zeros_like(vertices, dtype=float)
+    triangles = vertices[faces]
+    face_normals = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+    lengths = np.linalg.norm(face_normals, axis=1)
+    valid = lengths > 1e-12
+    face_normals[valid] /= lengths[valid, None]
+
+    np.add.at(normals, faces[:, 0], face_normals)
+    np.add.at(normals, faces[:, 1], face_normals)
+    np.add.at(normals, faces[:, 2], face_normals)
+
+    lengths = np.linalg.norm(normals, axis=1)
+    valid = lengths > 1e-12
+    normals[valid] /= lengths[valid, None]
+    return normals
+
+
+def export_obj(volume, output_path, smoothing_iterations=11, smoothing_relaxation=0.1):
     verts, faces, normals, _ = measure.marching_cubes(volume.astype(np.float32), level=0.5)
+    if smoothing_iterations > 0 and smoothing_relaxation > 0.0:
+        verts = smooth_mesh_vertices(verts, faces, smoothing_iterations, smoothing_relaxation)
+        normals = calculate_vertex_normals(verts, faces)
+
     # skimage returns coordinates in array order (z, y, x). Unity uses y as the up axis,
     # so the mesh is exported with the same x,z,y mapping used by VrCaseLoader.MapPoint.
     xyz_verts = np.column_stack([verts[:, 2], verts[:, 0], verts[:, 1]])
@@ -301,6 +412,13 @@ def build_export(args):
     )
     smoothed = selected_bspline["points"]
     bspline_params = selected_bspline["params"]
+    visual_route, visual_route_source = build_visual_route(
+        smoothed,
+        volume,
+        args.visual_samples,
+        args.extrapolation_threshold,
+    )
+    visual_extrapolation = check_extrapolation(visual_route, volume, threshold=args.extrapolation_threshold)
 
     route_csv = case_dir / "route.csv"
     route_json = case_dir / "vr_route_unity.json"
@@ -311,6 +429,8 @@ def build_export(args):
         "path_points": len(path_xyz),
         "exported_path_points": len(reduced_path),
         "smoothed_points": len(smoothed),
+        "visual_points": len(visual_route),
+        "visual_route_source": visual_route_source,
         "path_length_voxels": calculate_length(path_xyz),
         "smoothed_length_voxels": calculate_length(smoothed),
         "risk_points": selected_bspline["risk_points"],
@@ -328,6 +448,7 @@ def build_export(args):
         "target": point_object(target_xyz),
         "path_original": point_list(reduced_path),
         "path_smoothed": point_list(smoothed),
+        "path_visual": point_list(visual_route),
         "metrics": metrics,
     }
 
@@ -362,10 +483,25 @@ def build_export(args):
             ],
             "selected_score": list(selected_bspline["score"]),
         },
+        "visual_route": {
+            "source": visual_route_source,
+            "requested_samples": args.visual_samples,
+            "exported_points": len(visual_route),
+            "outside_points": visual_extrapolation["outside_points"],
+        },
+        "mesh": {
+            "smoothing_iterations": args.mesh_smoothing_iterations,
+            "smoothing_relaxation": args.mesh_smoothing_relaxation,
+        },
         "metrics": metrics,
     }
 
-    export_obj(volume, mesh_obj)
+    export_obj(
+        volume,
+        mesh_obj,
+        smoothing_iterations=args.mesh_smoothing_iterations,
+        smoothing_relaxation=args.mesh_smoothing_relaxation,
+    )
     write_route_csv(reduced_path, smoothed, route_csv)
     write_json(route_json, unity_route)
     write_json(manifest_json, manifest)
@@ -401,6 +537,24 @@ def build_parser():
         default=0.1,
         help="Allowed distance outside the valid mask before a point is counted as extrapolated.",
     )
+    parser.add_argument(
+        "--visual-samples",
+        type=int,
+        default=360,
+        help="Number of points in the Unity-only visual route. The validated path is not changed.",
+    )
+    parser.add_argument(
+        "--mesh-smoothing-iterations",
+        type=int,
+        default=11,
+        help="Laplacian smoothing iterations for the exported visual OBJ mesh.",
+    )
+    parser.add_argument(
+        "--mesh-smoothing-relaxation",
+        type=float,
+        default=0.1,
+        help="Laplacian smoothing relaxation factor for the exported visual OBJ mesh.",
+    )
     return parser
 
 
@@ -408,12 +562,23 @@ def main():
     args = build_parser().parse_args()
     if not 0 < args.path_point_ratio <= 1:
         raise ValueError("--path-point-ratio must be in the interval (0, 1].")
+    if args.visual_samples < 2:
+        raise ValueError("--visual-samples must be at least 2.")
+    if args.mesh_smoothing_iterations < 0:
+        raise ValueError("--mesh-smoothing-iterations must be zero or greater.")
+    if args.mesh_smoothing_relaxation < 0:
+        raise ValueError("--mesh-smoothing-relaxation must be zero or greater.")
 
     case_dir, manifest = build_export(args)
     print(f"VR export written to: {case_dir}")
     print(f"Mesh: {manifest['files']['urinary_tract_obj']}")
     print(f"Route: {manifest['files']['route_unity_json']}")
     print(f"Smoothed length: {manifest['metrics']['smoothed_length_voxels']:.2f} voxels")
+    print(
+        "Visual route: "
+        f"{manifest['visual_route']['exported_points']} points "
+        f"({manifest['visual_route']['source']})"
+    )
     print(f"Outside points: {manifest['metrics']['outside_points']}")
     print(CLINICAL_NOTICE)
 

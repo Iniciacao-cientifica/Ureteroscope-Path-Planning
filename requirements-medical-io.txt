@@ -1,0 +1,3 @@
+-r requirements-vr-export.txt
+SimpleITK
+pydicom

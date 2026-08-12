@@ -1,76 +1,104 @@
-# Ureteroscope-Path-Planning
- Path Planning of an flexible ureteroscope using search techniques, filters, and meta-heuristic optimization
+# Semi-automatic Ureteroscopy Planning VR
 
-## Recommended local demo: PyVista
+Academic prototype that converts a navigable urinary-tract mask into validated routes and an interactive Meta Quest case. The clinical workflow remains human-in-the-loop: anatomy and entry point are reviewed before route generation.
 
-The original research workflow is Python-first: it builds a 3D urinary tract model,
-computes the A* route, smooths the path, and opens an interactive PyVista viewer.
-This is the fastest way to demonstrate the project before turning it into a full VR app.
+> Research/training prototype only. It is not validated for diagnosis, patient care, intra-operative navigation, or robotic control.
 
-Install the viewer dependencies:
+## Current workflow
 
-```powershell
-python -m pip install -r requirements-pyvista.txt
+```text
+Reviewed anatomy mask + entry point
+                 |
+Optional stone mask -> automatic 3D components and targets
+                 |
+             A* routes
+                 |
+Safe B-Spline + route validation
+                 |
+manifest.json + OBJ meshes + routes.json
+                 |
+Unity/OpenXR -> Meta Quest
 ```
 
-Run a computation-only test:
+The original classification project is intentionally not required. A stone segmentation mask can be supplied when a validated model is available; otherwise the operator provides a target.
 
-```powershell
-python -B pyvista_demo.py --no-view
-```
+## Quick start
 
-Run the interactive 3D viewer:
-
-```powershell
-python -B pyvista_demo.py
-```
-
-PyVista controls:
-
-- `A`: show/hide the original A* path.
-- `Z`: show/hide the smoothed path.
-- `D`: show/hide curve points.
-- `C`: show/hide extrapolation check.
-- `M`: animate the camera along the route.
-- `R`: reset camera.
-- `S`: save screenshot.
-
-Generated files are written to `outputs/pyvista_demo/`, including route CSV, summary JSON,
-and an OBJ surface export.
-
-## VR prototype export
-
-This repository also includes an offline export pipeline for a Unity/OpenXR VR prototype.
-The intended use is academic planning/training: Python computes the ureteroscopy route and
-Unity displays the anatomy, target stone, route, metrics, and camera-follow simulation.
-
-Generate the default sample case:
+Install Python dependencies and generate the sample case:
 
 ```powershell
 python -m pip install -r requirements-vr-export.txt
-.\prepare_unity_case.ps1
+.\build_vr_case.cmd -MaskDir map -CaseId murillo_sample_case -SpacingMm "2,2,2"
 ```
 
-Outputs are written to `exports/murillo_sample_case/` and copied into `UnityVRPrototype/Assets/`:
+This creates `cases/murillo_sample_case/`, validates it, and synchronizes it with `UnityVRPrototype/Assets/StreamingAssets/Cases/`.
 
-- `urinary_tract_unity.obj`: mesh generated from the binary mask stack in `map/`.
-- `vr_route_unity.json`: Unity-readable route, start/target points, and metrics.
-- `route.csv`: A* and B-Spline route points for analysis.
-- `case_manifest.json`: export metadata and clinical/coordinate notes.
+With a 3D stone mask in the same geometry:
 
-Open `UnityVRPrototype/` in Unity and wait for package/asset import. The Unity project now
-declares the Quest/OpenXR packages in `Packages/manifest.json`; use
-`Murillo VR > Setup Sample Scene` to create the `Murillo XR Origin`, tracked camera,
-case loader, sample scene, and Build Settings entry. Then enable OpenXR for Android in
-Project Settings > XR Plug-in Management, switch the build target to Android, and build
-to the Meta Quest.
+```powershell
+.\build_vr_case.cmd `
+  -MaskDir "data\case_001\lumen" `
+  -StoneMask "data\case_001\stones.nii.gz" `
+  -CaseId "case_001" `
+  -Start "253,355,20" `
+  -SpacingMm "0.72,0.72,1.0"
+```
 
-Quest controller controls:
+The stone mask is split into 3D connected components. The pipeline calculates centroid, volume, equivalent diameter, and a route for each retained component. If a centroid is outside the navigable mask, the planning target is snapped to its nearest navigable voxel and both locations remain recorded.
 
-- `A` or `X`: show/hide the original A* path.
-- `B` or `Y`: show/hide the smoothed path.
-- trigger: start/stop camera-follow mode.
-- thumbstick up/down: adjust anatomy mesh opacity.
+## Build and install on Quest
 
-This is not a validated clinical tool and must not be used for diagnosis, treatment, or
-intra-operative navigation.
+After installing Android Build Support and configuring the headset:
+
+```powershell
+.\build_vr_case.cmd -MaskDir map -CaseId murillo_sample_case -SpacingMm "2,2,2" -BuildApk
+```
+
+To build and install on an authorized USB-connected Quest:
+
+```powershell
+.\build_vr_case.cmd -MaskDir map -CaseId murillo_sample_case -SpacingMm "2,2,2" -Install
+```
+
+The APK is written to `UnityVRPrototype/Builds/UreteroscopyVR.apk`. See [Quest setup and testing](docs/QUEST_TESTING.md).
+
+## Unity interaction
+
+- Grip with one controller: move and rotate the model.
+- Grip with both controllers: move and scale the model.
+- `X`: anatomy visibility.
+- `Y`: route visibility.
+- `A`: start/stop route marker.
+- `B`: next route/stone.
+- Left thumbstick up/down: anatomy opacity.
+- Left thumbstick click: reset model.
+- Right thumbstick left/right: previous/next case.
+- Controller ray + trigger: use the world-space menu.
+
+Editor keyboard fallback: `O`, `P`, `F`, `N`, `C`, `R`, `+`, and `-`.
+
+## DICOM/NIfTI
+
+Install optional medical I/O dependencies:
+
+```powershell
+python -m pip install -r requirements-medical-io.txt
+python dicom_to_nifti.py "anonymized_dicom" "case_001_ct.nii.gz"
+```
+
+The converter preserves spacing, origin, and direction in a geometry JSON but deliberately copies no patient tags. The input must already be authorized and de-identified.
+
+## Validation
+
+```powershell
+python -m unittest discover -s tests -v
+python validate_vr_case.py cases\murillo_sample_case
+```
+
+Inside Unity use `Murillo VR > Validate Project`. The APK build runs the same validation automatically.
+
+The v2 case interface is documented in [CASE_FORMAT.md](docs/CASE_FORMAT.md). Remaining data and hardware dependencies are documented in [AUTOMATION_STATUS.md](docs/AUTOMATION_STATUS.md).
+
+## Practical Windows note
+
+Unity batch mode can fail when the project is inside OneDrive or a path containing accents. For `-BuildApk`, the build script now stages a temporary copy under an ASCII-only path automatically and copies the APK back afterward. A clean worktree such as `C:\UnityWork\UreteroscopyVR` is still recommended when opening or building the project manually in the Editor.
