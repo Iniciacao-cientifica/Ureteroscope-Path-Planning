@@ -49,6 +49,10 @@ Use the repository command rather than building manually:
 
 The build fails early when the catalog, case files, OpenXR loader, Android module, or OBJ parser is unavailable.
 
+## Desktop training
+
+Open `Assets/Scenes/UreteroscopyDesktopTraining.unity` and press Play. The setup screen selects keyboard/mouse or the USB physical probe, three difficulty levels, anonymous participant code, and 100 mm encoder calibration. Build Windows from `Murillo VR > Build Desktop Training (Windows)`.
+
 ## Clinical boundary
 
 Academic/educational prototype only. Not validated for clinical diagnosis, intra-operative navigation, treatment, or patient care.

@@ -77,6 +77,14 @@ The APK is written to `UnityVRPrototype/Builds/UreteroscopyVR.apk`. See [Quest s
 
 Editor keyboard fallback: `O`, `P`, `F`, `N`, `C`, `R`, `+`, and `-`.
 
+## Desktop training game
+
+The Unity project also includes a monitor-based academic training mode with an endoscopic camera, minimap, three difficulty levels, wall collisions, score, and anonymous local CSV results. It works with keyboard/mouse or the ESP32-S3 physical probe controller.
+
+Open `Assets/Scenes/UreteroscopyDesktopTraining.unity` or use `Murillo VR > Setup Desktop Training Scene`. Build a Windows executable with `Murillo VR > Build Desktop Training (Windows)`.
+
+See [desktop training](docs/DESKTOP_TRAINING.md) and [physical controller assembly](docs/PHYSICAL_CONTROLLER.md).
+
 ## DICOM/NIfTI
 
 Install optional medical I/O dependencies:

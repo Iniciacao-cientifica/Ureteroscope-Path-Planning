@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 public static class DesktopTrainingSceneSetup
@@ -55,6 +56,7 @@ public static class DesktopTrainingSceneSetup
 
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.025f, 0.025f, 0.03f);
+        EnsureRuntimeShaders();
         Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
         EditorSceneManager.SaveScene(scene, ScenePath);
         EnsureSceneInBuildSettings();
@@ -85,6 +87,7 @@ public static class DesktopTrainingSceneSetup
     private static void BuildWindows()
     {
         if (!File.Exists(ScenePath)) SetupDesktopTrainingScene(false);
+        EnsureRuntimeShaders();
         string output = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Builds", "Desktop", "UreteroscopyTraining.exe"));
         Directory.CreateDirectory(Path.GetDirectoryName(output));
         BuildPlayerOptions options = new BuildPlayerOptions
@@ -117,5 +120,36 @@ public static class DesktopTrainingSceneSetup
         Array.Resize(ref current, current.Length + 1);
         current[current.Length - 1] = new EditorBuildSettingsScene(ScenePath, true);
         EditorBuildSettings.scenes = current;
+    }
+
+    private static void EnsureRuntimeShaders()
+    {
+        GraphicsSettings settings = AssetDatabase.LoadAssetAtPath<GraphicsSettings>("ProjectSettings/GraphicsSettings.asset");
+        if (settings == null) throw new InvalidOperationException("Could not load GraphicsSettings.asset.");
+        SerializedObject serialized = new SerializedObject(settings);
+        SerializedProperty included = serialized.FindProperty("m_AlwaysIncludedShaders");
+        string[] shaderNames = { "Standard", "Sprites/Default" };
+        foreach (string shaderName in shaderNames)
+        {
+            Shader shader = Shader.Find(shaderName);
+            if (shader == null) throw new InvalidOperationException($"Required runtime shader is unavailable: {shaderName}");
+            bool present = false;
+            for (int index = 0; index < included.arraySize; index++)
+            {
+                if (included.GetArrayElementAtIndex(index).objectReferenceValue == shader)
+                {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present)
+            {
+                included.InsertArrayElementAtIndex(included.arraySize);
+                included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = shader;
+            }
+        }
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(settings);
+        AssetDatabase.SaveAssets();
     }
 }

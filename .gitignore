@@ -24,3 +24,8 @@ UnityVRPrototype/Logs/
 UnityVRPrototype/UserSettings/
 UnityVRPrototype/Assets/_Recovery/
 UnityVRPrototype/Assets/_Recovery.meta
+
+# Local validation and embedded build caches
+unity-*.log
+unity-*-tests.xml
+hardware/**/.pio/

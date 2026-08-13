@@ -28,6 +28,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
 {
     private const int InteriorLayer = 29;
     private const int MinimapOnlyLayer = 30;
+    private const string EncoderScalePreference = "UreteroscopyTraining.MillimetersPerEncoderTick";
 
     [Header("Case and cameras")]
     public VrCaseLoader caseLoader;
@@ -79,12 +80,16 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private float feedbackUntil;
     private string lastCsvPath = "";
     private TrainingSessionResult lastResult;
+    private bool encoderCalibrationMode;
+    private bool encoderCalibrationHasZero;
+    private long encoderCalibrationZeroTicks;
     private GUIStyle titleStyle;
     private GUIStyle labelStyle;
     private GUIStyle centeredStyle;
 
     private void Awake()
     {
+        millimetersPerEncoderTick = PlayerPrefs.GetFloat(EncoderScalePreference, millimetersPerEncoderTick);
         if (caseLoader == null) caseLoader = FindAnyObjectByType<VrCaseLoader>();
         EnsureCameras();
     }
@@ -105,13 +110,15 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void Update()
     {
+        bool receivedFrame = false;
         inputSource?.Tick();
         if (inputSource != null && inputSource.TryGetLatestFrame(out TrainingInputFrame frame))
         {
+            receivedFrame = true;
             latestFrame = frame;
             hasLatestFrame = true;
             bool calibrateEdge = frame.calibratePressed && !previousCalibrate;
-            if (calibrateRequested || calibrateEdge)
+            if (!encoderCalibrationMode && (calibrateRequested || calibrateEdge))
             {
                 Calibrate(frame);
                 calibrateRequested = false;
@@ -127,8 +134,9 @@ public class UreteroscopyTrainingController : MonoBehaviour
                 feedbackMessage = "Sensor desconectado. Movimento pausado.";
                 return;
             }
-            if (hasLatestFrame) ProcessFrame(latestFrame);
+            if (receivedFrame) ProcessFrame(latestFrame);
             elapsedSeconds += Time.deltaTime;
+            if (wasContacting) wallContactSeconds += Time.deltaTime;
             UpdateTargetAlignment();
         }
         else if (State == TrainingSessionState.SensorPaused && inputSource != null && inputSource.IsConnected)
@@ -136,7 +144,6 @@ public class UreteroscopyTrainingController : MonoBehaviour
             State = TrainingSessionState.Calibrating;
             feedbackMessage = "Controle reconectado. Recalibre antes de continuar.";
         }
-        hasLatestFrame = false;
     }
 
     private void HandleCaseReady()
@@ -309,6 +316,51 @@ public class UreteroscopyTrainingController : MonoBehaviour
         calibrateRequested = true;
     }
 
+    public void BeginEncoderCalibration()
+    {
+        if (State != TrainingSessionState.Ready) return;
+        StopInput();
+        inputSource = new SerialControllerInput(serialPort);
+        encoderCalibrationMode = true;
+        encoderCalibrationHasZero = false;
+        State = TrainingSessionState.Calibrating;
+        feedbackMessage = "Conecte a vareta, posicione no zero e marque o início.";
+    }
+
+    private void MarkEncoderCalibrationZero()
+    {
+        if (!hasLatestFrame || inputSource == null || !inputSource.IsConnected)
+        {
+            feedbackMessage = "Aguardando pacotes válidos da vareta USB.";
+            return;
+        }
+        encoderCalibrationZeroTicks = latestFrame.encoderTicks;
+        encoderCalibrationHasZero = true;
+        feedbackMessage = "Zero marcado. Avance exatamente 100 mm e conclua.";
+    }
+
+    private void FinishEncoderCalibration()
+    {
+        if (!encoderCalibrationHasZero || !hasLatestFrame)
+        {
+            feedbackMessage = "Marque o zero antes de concluir.";
+            return;
+        }
+        long delta = Math.Abs(latestFrame.encoderTicks - encoderCalibrationZeroTicks);
+        if (delta < 10)
+        {
+            feedbackMessage = "Poucos pulsos detectados. Verifique a roda e repita.";
+            return;
+        }
+        millimetersPerEncoderTick = 100f / delta;
+        PlayerPrefs.SetFloat(EncoderScalePreference, millimetersPerEncoderTick);
+        PlayerPrefs.Save();
+        feedbackMessage = $"Encoder calibrado: {millimetersPerEncoderTick:F4} mm/tick.";
+        encoderCalibrationMode = false;
+        StopInput();
+        State = TrainingSessionState.Ready;
+    }
+
     private void Calibrate(TrainingInputFrame frame)
     {
         if (!frame.imuOk)
@@ -337,7 +389,6 @@ public class UreteroscopyTrainingController : MonoBehaviour
         bool contacting = deltaMeters > 0f && !TryMoveProbe(deltaMeters);
         if (contacting)
         {
-            wallContactSeconds += Time.deltaTime;
             if (!wasContacting)
             {
                 collisionEvents++;
@@ -485,7 +536,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private void OnGUI()
     {
         EnsureGuiStyles();
-        GUI.Box(new Rect(14, 14, 390, State == TrainingSessionState.Ready ? 315 : 190), "");
+        GUI.Box(new Rect(14, 14, 390, State == TrainingSessionState.Ready ? 350 : 210), "");
         GUI.Label(new Rect(28, 24, 360, 34), "TREINAMENTO DE URETEROSCOPIA", titleStyle);
         GUI.Label(new Rect(28, 60, 360, 24), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", labelStyle);
 
@@ -505,7 +556,11 @@ public class UreteroscopyTrainingController : MonoBehaviour
                 GUI.Label(new Rect(28, 199, 100, 24), "Porta COM:", labelStyle);
                 serialPort = GUI.TextField(new Rect(130, 197, 239, 27), serialPort, 16);
             }
-            if (GUI.Button(new Rect(28, 245, 341, 44), "INICIAR TREINAMENTO"))
+            if (inputMode == TrainingInputMode.SerialUsb && GUI.Button(new Rect(28, 232, 341, 30), $"CALIBRAR ENCODER 100 mm ({millimetersPerEncoderTick:F4} mm/tick)"))
+            {
+                BeginEncoderCalibration();
+            }
+            if (GUI.Button(new Rect(28, 274, 341, 44), "INICIAR TREINAMENTO"))
             {
                 ApplyDifficultyVisuals();
                 BeginSession();
@@ -519,8 +574,22 @@ public class UreteroscopyTrainingController : MonoBehaviour
         {
             GUI.Label(new Rect(28, 92, 350, 45), feedbackMessage, labelStyle);
             GUI.Label(new Rect(28, 132, 350, 24), inputSource?.DisplayName ?? "Sem controle", labelStyle);
-            if (State == TrainingSessionState.Calibrating && GUI.Button(new Rect(28, 155, 165, 32), "CALIBRAR AGORA")) RequestCalibration();
-            if (GUI.Button(new Rect(204, 155, 165, 32), "Cancelar")) AbortSession();
+            if (encoderCalibrationMode)
+            {
+                if (GUI.Button(new Rect(28, 160, 105, 32), "1. MARCAR ZERO")) MarkEncoderCalibrationZero();
+                if (GUI.Button(new Rect(138, 160, 135, 32), "2. CONCLUIR 100 mm")) FinishEncoderCalibration();
+                if (GUI.Button(new Rect(278, 160, 91, 32), "Cancelar"))
+                {
+                    encoderCalibrationMode = false;
+                    StopInput();
+                    State = TrainingSessionState.Ready;
+                }
+            }
+            else
+            {
+                if (State == TrainingSessionState.Calibrating && GUI.Button(new Rect(28, 160, 165, 32), "CALIBRAR AGORA")) RequestCalibration();
+                if (GUI.Button(new Rect(204, 160, 165, 32), "Cancelar")) AbortSession();
+            }
         }
         else if (State == TrainingSessionState.Running)
         {
