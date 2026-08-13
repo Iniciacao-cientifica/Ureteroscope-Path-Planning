@@ -1,0 +1,6 @@
+{
+  "name": "Murillo.Training.PlayModeTests",
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

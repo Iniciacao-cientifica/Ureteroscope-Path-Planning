@@ -10,6 +10,9 @@ using Unity.XR.CoreUtils;
 
 public class VrCaseLoader : MonoBehaviour
 {
+    public event Action CaseReady;
+    public event Action RouteChanged;
+
     [Header("Case catalog")]
     public string catalogRelativePath = "Cases/catalog.json";
     public string routeFileName = "vr_route_unity.json";
@@ -18,6 +21,9 @@ public class VrCaseLoader : MonoBehaviour
     [Header("Scene")]
     public Transform sceneRoot;
     public Transform cameraRig;
+    public bool frameCaseOnLoad = true;
+    public bool enableVrRuntimeObjects = true;
+    public bool enableInformationPanel = true;
     public bool mapMedicalZToUnityY = true;
     public float voxelToMeterScale = 0.002f;
     public float maximumTabletopSize = 0.75f;
@@ -55,6 +61,14 @@ public class VrCaseLoader : MonoBehaviour
     public int CurrentRouteIndex => currentRouteIndex;
     public int RouteCount => routesDocument?.routes?.Length ?? 0;
     public string CurrentCaseName => manifest?.display_name ?? routeData?.case_name ?? "No case";
+    public bool IsReady => !loading && routeData != null && visualRoutePositions.Length > 1;
+    public Transform SceneRoot => sceneRoot;
+    public Transform ContentRoot => contentRoot;
+    public Transform RouteRoot => routeRoot;
+    public GameObject AnatomyObject => anatomyObject;
+    public VrCaseManifest CurrentManifest => manifest;
+    public VrRouteData CurrentRoute => routeData;
+    public float CurrentRouteLengthMeters => visualRouteLength;
 
     private VrCaseCatalog catalog;
     private VrCaseManifest manifest;
@@ -99,9 +113,9 @@ public class VrCaseLoader : MonoBehaviour
     {
         EnsureSceneRoot();
         EnsureRuntimeLighting();
-        EnsureInformationText();
+        if (enableInformationPanel) EnsureInformationText();
         EnsureManipulator();
-        EnsureRuntimeInteractionObjects();
+        if (enableVrRuntimeObjects) EnsureRuntimeInteractionObjects();
         yield return LoadCatalog();
     }
 
@@ -228,9 +242,11 @@ public class VrCaseLoader : MonoBehaviour
             BuildStoneMarkers();
             currentRouteIndex = 0;
             SelectRoute(0);
-            FrameCaseInFrontOfViewer();
+            if (frameCaseOnLoad) FrameCaseInFrontOfViewer();
             manipulator?.CaptureResetPose();
             SetStatus($"Loaded {manifest.display_name}");
+            loading = false;
+            CaseReady?.Invoke();
         }
         catch (Exception exception)
         {
@@ -266,11 +282,14 @@ public class VrCaseLoader : MonoBehaviour
                 anatomyObject.transform.SetParent(contentRoot, false);
                 anatomyObject.transform.localScale = Vector3.one * voxelToMeterScale;
                 ApplyMaterial(anatomyObject, anatomyColor, true);
+                EnsureAnatomyColliders(anatomyObject);
             }
             SelectLegacyRoute(routeData);
-            FrameCaseInFrontOfViewer();
+            if (frameCaseOnLoad) FrameCaseInFrontOfViewer();
             manipulator?.CaptureResetPose();
             SetStatus("Loaded legacy sample case");
+            loading = false;
+            CaseReady?.Invoke();
         }
         catch (Exception exception)
         {
@@ -326,8 +345,20 @@ public class VrCaseLoader : MonoBehaviour
         if (transparent)
         {
             anatomyMaterial = renderer.sharedMaterial;
+            MeshCollider collider = result.AddComponent<MeshCollider>();
+            collider.sharedMesh = mesh;
         }
         return result;
+    }
+
+    private static void EnsureAnatomyColliders(GameObject target)
+    {
+        foreach (MeshFilter filter in target.GetComponentsInChildren<MeshFilter>(true))
+        {
+            MeshCollider collider = filter.GetComponent<MeshCollider>();
+            if (collider == null) collider = filter.gameObject.AddComponent<MeshCollider>();
+            collider.sharedMesh = filter.sharedMesh;
+        }
     }
 
     private void BuildStoneMarkers()
@@ -366,6 +397,7 @@ public class VrCaseLoader : MonoBehaviour
         routeData = routesDocument.routes[currentRouteIndex];
         BuildSelectedRoute();
         SetStatus($"Route {currentRouteIndex + 1}/{routesDocument.routes.Length}: {routeData.stone_id}");
+        RouteChanged?.Invoke();
     }
 
     private void BuildSelectedRoute()
@@ -593,6 +625,48 @@ public class VrCaseLoader : MonoBehaviour
         float segment = visualRouteDistances[upper] - visualRouteDistances[lower];
         float amount = segment > 0.000001f ? (distance - visualRouteDistances[lower]) / segment : 0f;
         return Vector3.Lerp(visualRoutePositions[lower], visualRoutePositions[upper], amount);
+    }
+
+    public Vector3 SampleCurrentRouteLocal(float distanceMeters)
+    {
+        return SampleRoute(Mathf.Clamp(distanceMeters, 0f, visualRouteLength));
+    }
+
+    public Vector3 GetCurrentStartLocal()
+    {
+        return routeData?.start != null ? MapPoint(routeData.start) : Vector3.zero;
+    }
+
+    public Vector3 GetCurrentTargetLocal()
+    {
+        return routeData?.target != null ? MapPoint(routeData.target) : Vector3.zero;
+    }
+
+    public Vector3 GetCurrentTargetForwardLocal()
+    {
+        if (visualRoutePositions.Length < 2) return Vector3.forward;
+        return (visualRoutePositions[visualRoutePositions.Length - 1] -
+            visualRoutePositions[visualRoutePositions.Length - 2]).normalized;
+    }
+
+    public Vector3[] CopyCurrentRoutePositions()
+    {
+        return (Vector3[])visualRoutePositions.Clone();
+    }
+
+    public float GetCurrentStoneRadiusMeters()
+    {
+        if (manifest?.stones != null && routeData != null)
+        {
+            foreach (VrStoneData stone in manifest.stones)
+            {
+                if (stone != null && string.Equals(stone.stone_id, routeData.stone_id, StringComparison.Ordinal))
+                {
+                    return Mathf.Max(0f, stone.equivalent_diameter_mm * 0.0005f);
+                }
+            }
+        }
+        return pointRadius * 0.675f;
     }
 
     private void HandleKeyboardInput()
@@ -934,6 +1008,8 @@ public class VrCaseLoader : MonoBehaviour
             material.EnableKeyword("_EMISSION");
         }
         if (transparent) ConfigureTransparentMaterial(material);
+        material.doubleSidedGI = true;
+        if (material.HasProperty("_Cull")) material.SetFloat("_Cull", (float)CullMode.Off);
         return material;
     }
 

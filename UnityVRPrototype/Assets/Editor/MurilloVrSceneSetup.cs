@@ -77,6 +77,10 @@ public static class MurilloVrSceneSetup
 
     private static void AutoSetupWhenAssetsExist()
     {
+        if (Application.isBatchMode)
+        {
+            return;
+        }
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
             return;
