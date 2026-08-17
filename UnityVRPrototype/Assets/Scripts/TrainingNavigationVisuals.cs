@@ -11,9 +11,13 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
     private Vector3[] routeLocal = Array.Empty<Vector3>();
     private GameObject arrowRoot;
     private GameObject environmentRoot;
-    private Material arrowMaterial;
+    private Material arrowOutlineMaterial;
+    private Material arrowShaftMaterial;
+    private Material arrowHeadMaterial;
     private Material environmentMaterial;
     private Material gridMaterial;
+
+    public Vector2 CurrentScreenDirection { get; private set; } = Vector2.up;
 
     public void Configure(Camera camera, VrCaseLoader loader, Transform probeTransform, Vector3[] route)
     {
@@ -43,8 +47,18 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
         Vector3 targetWorld = caseLoader.ContentRoot.TransformPoint(targetLocal);
         Vector3 direction = targetWorld - probe.position;
         if (direction.sqrMagnitude < 0.0000001f) direction = probe.forward;
-        arrowRoot.transform.localPosition = new Vector3(0f, 0.028f, 0.075f);
-        arrowRoot.transform.rotation = Quaternion.LookRotation(direction.normalized, viewingCamera.transform.up);
+        Vector3 cameraDirection = viewingCamera.transform.InverseTransformDirection(direction.normalized);
+        Vector2 screenDirection = new Vector2(cameraDirection.x, cameraDirection.y);
+        if (screenDirection.sqrMagnitude < 0.0025f)
+        {
+            screenDirection = cameraDirection.z >= 0f ? Vector2.up : Vector2.down;
+        }
+        CurrentScreenDirection = screenDirection.normalized;
+        float angle = -Mathf.Atan2(CurrentScreenDirection.x, CurrentScreenDirection.y) * Mathf.Rad2Deg;
+        arrowRoot.transform.localPosition = new Vector3(0f, 0.04f, 0.12f);
+        arrowRoot.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+        float pulse = 1f + Mathf.Sin(Time.unscaledTime * 5f) * 0.035f;
+        arrowRoot.transform.localScale = Vector3.one * pulse;
     }
 
     private void EnsureArrow()
@@ -57,28 +71,40 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
 
             Shader shader = Shader.Find("Murillo/Training Overlay Unlit");
             if (shader == null) shader = Shader.Find("Sprites/Default");
-            arrowMaterial = new Material(shader) { color = new Color(0.05f, 1f, 0.92f, 0.95f) };
-            arrowMaterial.renderQueue = 5000;
+            arrowOutlineMaterial = CreateOverlayMaterial(shader, new Color(0.96f, 1f, 1f, 0.98f), 4998);
+            arrowShaftMaterial = CreateOverlayMaterial(shader, new Color(0.04f, 0.30f, 1f, 0.98f), 5000);
+            arrowHeadMaterial = CreateOverlayMaterial(shader, new Color(0.08f, 1f, 0.82f, 1f), 5000);
+            Mesh arrowMesh = BuildFlatArrowMesh();
 
-            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            shaft.name = "Guidance Arrow Shaft";
-            shaft.transform.SetParent(arrowRoot.transform, false);
-            shaft.transform.localPosition = new Vector3(0f, 0f, 0.012f);
-            shaft.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            shaft.transform.localScale = new Vector3(0.0022f, 0.012f, 0.0022f);
-            RemoveCollider(shaft);
-            shaft.GetComponent<Renderer>().sharedMaterial = arrowMaterial;
+            GameObject outline = new GameObject("Guidance Arrow Outline");
+            outline.layer = GuidanceLayer;
+            outline.transform.SetParent(arrowRoot.transform, false);
+            outline.transform.localPosition = new Vector3(0f, 0f, 0.0004f);
+            outline.transform.localScale = Vector3.one * 1.22f;
+            outline.AddComponent<MeshFilter>().sharedMesh = arrowMesh;
+            MeshRenderer outlineRenderer = outline.AddComponent<MeshRenderer>();
+            outlineRenderer.sharedMaterials = new[] { arrowOutlineMaterial, arrowOutlineMaterial };
+            outlineRenderer.sortingOrder = 10;
 
-            GameObject head = new GameObject("Guidance Arrow Head");
-            head.layer = GuidanceLayer;
-            head.transform.SetParent(arrowRoot.transform, false);
-            head.transform.localPosition = new Vector3(0f, 0f, 0.024f);
-            head.AddComponent<MeshFilter>().sharedMesh = BuildConeMesh(0.0065f, 0.014f, 12);
-            head.AddComponent<MeshRenderer>().sharedMaterial = arrowMaterial;
+            GameObject face = new GameObject("Guidance Arrow Face");
+            face.layer = GuidanceLayer;
+            face.transform.SetParent(arrowRoot.transform, false);
+            face.AddComponent<MeshFilter>().sharedMesh = arrowMesh;
+            MeshRenderer faceRenderer = face.AddComponent<MeshRenderer>();
+            faceRenderer.sharedMaterials = new[] { arrowShaftMaterial, arrowHeadMaterial };
+            faceRenderer.sortingOrder = 11;
             SetLayerRecursively(arrowRoot.transform, GuidanceLayer);
         }
         arrowRoot.transform.SetParent(viewingCamera.transform, false);
-        arrowRoot.transform.localPosition = new Vector3(0f, 0.028f, 0.075f);
+        arrowRoot.transform.localPosition = new Vector3(0f, 0.04f, 0.12f);
+        arrowRoot.transform.localRotation = Quaternion.identity;
+        arrowRoot.transform.localScale = Vector3.one;
+    }
+
+    private static Material CreateOverlayMaterial(Shader shader, Color color, int renderQueue)
+    {
+        Material material = new Material(shader) { color = color, renderQueue = renderQueue };
+        return material;
     }
 
     private void BuildEnvironment()
@@ -187,32 +213,22 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
         }
     }
 
-    private static Mesh BuildConeMesh(float radius, float length, int sides)
+    private static Mesh BuildFlatArrowMesh()
     {
-        Vector3[] vertices = new Vector3[sides + 2];
-        vertices[0] = Vector3.zero;
-        vertices[1] = Vector3.forward * length;
-        for (int index = 0; index < sides; index++)
+        Vector3[] vertices =
         {
-            float angle = Mathf.PI * 2f * index / sides;
-            vertices[index + 2] = new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f);
-        }
-        int[] triangles = new int[sides * 6];
-        int triangle = 0;
-        for (int index = 0; index < sides; index++)
-        {
-            int next = (index + 1) % sides;
-            triangles[triangle++] = 1;
-            triangles[triangle++] = index + 2;
-            triangles[triangle++] = next + 2;
-            triangles[triangle++] = 0;
-            triangles[triangle++] = next + 2;
-            triangles[triangle++] = index + 2;
-        }
-        Mesh mesh = new Mesh { name = "Guidance Arrow Cone" };
+            new Vector3(-0.0028f, -0.009f, 0f),
+            new Vector3(0.0028f, -0.009f, 0f),
+            new Vector3(0.0028f, 0.002f, 0f),
+            new Vector3(0.008f, 0.002f, 0f),
+            new Vector3(0f, 0.014f, 0f),
+            new Vector3(-0.008f, 0.002f, 0f),
+            new Vector3(-0.0028f, 0.002f, 0f)
+        };
+        Mesh mesh = new Mesh { name = "Flat Route Guidance Arrow", subMeshCount = 2 };
         mesh.vertices = vertices;
-        mesh.triangles = triangles;
-        mesh.RecalculateNormals();
+        mesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 6 }, 0);
+        mesh.SetTriangles(new[] { 6, 2, 3, 6, 3, 5, 5, 3, 4 }, 1);
         mesh.RecalculateBounds();
         return mesh;
     }

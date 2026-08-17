@@ -32,6 +32,9 @@ public enum TrainingSessionState
 
 public class UreteroscopyTrainingController : MonoBehaviour
 {
+    public const float ActiveHudWidth = 340f;
+    public const float ActiveMinimapMaximumSize = 210f;
+
     private const int InteriorLayer = 29;
     private const int MinimapOnlyLayer = 30;
     private const string EncoderScalePreference = "UreteroscopyTraining.MillimetersPerEncoderTick";
@@ -105,6 +108,11 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private GUIStyle titleStyle;
     private GUIStyle labelStyle;
     private GUIStyle centeredStyle;
+    private GUIStyle hudTitleStyle;
+    private GUIStyle hudLabelStyle;
+    private GUIStyle hudCenteredStyle;
+    private GUIStyle hudButtonStyle;
+    private Font runtimeUiFont;
 
     private void Awake()
     {
@@ -716,14 +724,27 @@ public class UreteroscopyTrainingController : MonoBehaviour
             GUI.color = previous;
         }
 
+        bool activeHud = State == TrainingSessionState.Running;
+        float panelWidth = activeHud ? ActiveHudWidth : 430f;
         float panelHeight = State == TrainingSessionState.Ready
             ? 400f
-            : State == TrainingSessionState.Running
-                ? experienceMode == TrainingExperienceMode.Training ? 265f : 235f
+            : activeHud
+                ? experienceMode == TrainingExperienceMode.Training ? 180f : 160f
                 : 220f;
-        GUI.Box(new Rect(14, 14, 430, panelHeight), "");
-        GUI.Label(new Rect(28, 24, 360, 34), "TREINAMENTO DE URETEROSCOPIA", titleStyle);
-        GUI.Label(new Rect(28, 60, 400, 24), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", labelStyle);
+        GUI.Box(new Rect(14, 14, panelWidth, panelHeight), "");
+        if (activeHud)
+        {
+            string activeTitle = experienceMode == TrainingExperienceMode.Training
+                ? "URETEROSCOPIA • TREINAMENTO"
+                : "URETEROSCOPIA • EXPLORAÇÃO";
+            GUI.Label(new Rect(26, 20, 310, 24), activeTitle, hudTitleStyle);
+            GUI.Label(new Rect(26, 45, 305, 19), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", hudLabelStyle);
+        }
+        else
+        {
+            GUI.Label(new Rect(28, 24, 360, 34), "TREINAMENTO DE URETEROSCOPIA", titleStyle);
+            GUI.Label(new Rect(28, 60, 400, 24), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", labelStyle);
+        }
 
         if (State == TrainingSessionState.Ready)
         {
@@ -742,7 +763,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
             }
             else
             {
-                GUI.Label(new Rect(28, 126, 400, 62), "Explore dentro e fora do modelo sem pontuação ou CSV.\nA seta 3D continua indicando a rota planejada.", labelStyle);
+                GUI.Label(new Rect(28, 126, 400, 62), "Explore dentro e fora do modelo sem pontuação ou CSV.\nA seta colorida indica o próximo trecho da rota.", labelStyle);
             }
 
             GUI.Label(new Rect(28, 200, 100, 24), "Controle:", labelStyle);
@@ -812,23 +833,25 @@ public class UreteroscopyTrainingController : MonoBehaviour
         {
             if (experienceMode == TrainingExperienceMode.Training)
             {
-                GUI.Label(new Rect(28, 89, 390, 24), $"Tempo: {elapsedSeconds:F1}s    Colisões: {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)}", labelStyle);
-                GUI.Label(new Rect(28, 116, 390, 24), $"Desvio da rota: {CurrentDeviationMillimeters:F1} mm", labelStyle);
+                GUI.Label(new Rect(26, 68, 305, 20), $"Tempo {elapsedSeconds:F1}s  •  Colisões {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)}", hudLabelStyle);
+                GUI.Label(new Rect(26, 90, 305, 20), $"Desvio da rota: {CurrentDeviationMillimeters:F1} mm", hudLabelStyle);
                 string target = targetStableTimer > 0f ? $"ALVO ALINHADO {Mathf.Clamp01(targetStableTimer / targetStableSeconds) * 100f:F0}%" : "Procure e alinhe a pedra";
-                GUI.Label(new Rect(28, 143, 390, 24), target, labelStyle);
+                GUI.Label(new Rect(26, 112, 305, 20), target, hudLabelStyle);
             }
             else
             {
-                GUI.Label(new Rect(28, 89, 390, 24), "EXPLORAÇÃO LIVRE — sem pontuação ou registro CSV", labelStyle);
-                GUI.Label(new Rect(28, 116, 390, 24), $"Distância da rota: {CurrentDeviationMillimeters:F1} mm", labelStyle);
+                GUI.Label(new Rect(26, 68, 305, 20), "Livre • sem pontuação ou CSV", hudLabelStyle);
+                GUI.Label(new Rect(26, 90, 305, 20), $"Distância da rota: {CurrentDeviationMillimeters:F1} mm", hudLabelStyle);
             }
             if (inputMode == TrainingInputMode.Keyboard)
             {
-                string actionHelp = experienceMode == TrainingExperienceMode.Training ? "Botão central ou Espaço: confirmar alvo" : "A seta ciano indica o próximo trecho da rota";
-                GUI.Label(new Rect(28, 171, 400, 38), $"Segure mouse Esq./Dir. para avançar/recuar\n{actionHelp}", centeredStyle);
+                string actionHelp = experienceMode == TrainingExperienceMode.Training ? "Centro/Espaço: confirmar" : "Seta: próximo trecho";
+                float helpY = experienceMode == TrainingExperienceMode.Training ? 136f : 114f;
+                GUI.Label(new Rect(26, helpY, 190, 34), $"Mouse Esq./Dir.: mover\n{actionHelp}", hudLabelStyle);
             }
-            string endLabel = experienceMode == TrainingExperienceMode.Training ? "DESISTIR" : "SAIR DA EXPLORAÇÃO";
-            if (GUI.Button(new Rect(258, 215, 170, 32), endLabel))
+            string endLabel = experienceMode == TrainingExperienceMode.Training ? "DESISTIR" : "SAIR";
+            float buttonY = experienceMode == TrainingExperienceMode.Training ? 140f : 118f;
+            if (GUI.Button(new Rect(222, buttonY, 118, 30), endLabel, hudButtonStyle))
             {
                 if (experienceMode == TrainingExperienceMode.Training) RequestGiveUpConfirmation();
                 else ExitExploration();
@@ -855,14 +878,18 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
         if (minimapTexture != null && State != TrainingSessionState.LoadingCase && State != TrainingSessionState.Ready)
         {
-            float size = Mathf.Min(300f, Screen.height * 0.36f);
-            Rect map = new Rect(Screen.width - size - 20f, 20f, size, size);
-            GUI.Box(new Rect(map.x - 5, map.y - 5, map.width + 10, map.height + 32), "MINIMAPA");
+            float maximum = activeHud ? ActiveMinimapMaximumSize : 300f;
+            float proportion = activeHud ? 0.27f : 0.36f;
+            float size = Mathf.Min(maximum, Screen.height * proportion);
+            Rect container = new Rect(Screen.width - size - 18f, 14f, size + 8f, size + 28f);
+            Rect map = new Rect(container.x + 4f, container.y + 22f, size, size);
+            GUI.Box(container, "");
+            GUI.Label(new Rect(container.x + 4f, container.y + 2f, size, 18f), "MINIMAPA", hudCenteredStyle);
             GUI.DrawTexture(map, minimapTexture, ScaleMode.ScaleToFit, false);
         }
         if (!string.IsNullOrEmpty(feedbackMessage) && (feedbackUntil <= 0f || Time.unscaledTime <= feedbackUntil) && State == TrainingSessionState.Running)
         {
-            GUI.Label(new Rect(Screen.width * 0.5f - 300, Screen.height - 105, 600, 40), feedbackMessage, centeredStyle);
+            GUI.Label(new Rect(Screen.width * 0.5f - 250, Screen.height - 90, 500, 30), feedbackMessage, hudCenteredStyle);
         }
 
         if (showGiveUpConfirmation)
@@ -883,15 +910,21 @@ public class UreteroscopyTrainingController : MonoBehaviour
             }
         }
         GUI.Label(new Rect(12, Screen.height - 35, Screen.width - 24, 25),
-            "PROTÓTIPO ACADÊMICO/EDUCACIONAL — NÃO UTILIZAR EM PACIENTES OU PROCEDIMENTOS CLÍNICOS", centeredStyle);
+            "PROTÓTIPO ACADÊMICO/EDUCACIONAL — NÃO UTILIZAR EM PACIENTES OU PROCEDIMENTOS CLÍNICOS", hudCenteredStyle);
     }
 
     private void EnsureGuiStyles()
     {
         if (titleStyle != null) return;
-        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, normal = { textColor = Color.white } };
-        labelStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, normal = { textColor = Color.white }, wordWrap = true };
+        runtimeUiFont = Font.CreateDynamicFontFromOSFont(new[] { "Segoe UI", "Arial" }, 16);
+        Font font = runtimeUiFont != null ? runtimeUiFont : GUI.skin.font;
+        titleStyle = new GUIStyle(GUI.skin.label) { font = font, fontSize = 20, fontStyle = FontStyle.Bold, normal = { textColor = Color.white } };
+        labelStyle = new GUIStyle(GUI.skin.label) { font = font, fontSize = 15, normal = { textColor = Color.white }, wordWrap = true };
         centeredStyle = new GUIStyle(labelStyle) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+        hudTitleStyle = new GUIStyle(labelStyle) { fontSize = 14, fontStyle = FontStyle.Bold };
+        hudLabelStyle = new GUIStyle(labelStyle) { fontSize = 12, fontStyle = FontStyle.Normal };
+        hudCenteredStyle = new GUIStyle(hudLabelStyle) { alignment = TextAnchor.MiddleCenter };
+        hudButtonStyle = new GUIStyle(GUI.skin.button) { font = font, fontSize = 12, fontStyle = FontStyle.Bold };
     }
 
     private void OnDisable()
@@ -906,6 +939,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (runtimeUiFont != null) Destroy(runtimeUiFont);
         if (minimapTexture != null)
         {
             minimapTexture.Release();

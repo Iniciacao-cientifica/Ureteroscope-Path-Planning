@@ -116,5 +116,7 @@ public class TrainingEditModeTests
         Assert.That(GameObject.Find("Training Case Loader")?.GetComponent<VrCaseLoader>(), Is.Not.Null);
         Assert.That(GameObject.Find("Desktop Training Controller")?.GetComponent<UreteroscopyTrainingController>(), Is.Not.Null);
         Assert.That(UnityEngine.Object.FindObjectsByType<Camera>().Length, Is.GreaterThanOrEqualTo(2));
+        Assert.That(UreteroscopyTrainingController.ActiveHudWidth, Is.LessThanOrEqualTo(350f));
+        Assert.That(UreteroscopyTrainingController.ActiveMinimapMaximumSize, Is.LessThanOrEqualTo(220f));
     }
 }

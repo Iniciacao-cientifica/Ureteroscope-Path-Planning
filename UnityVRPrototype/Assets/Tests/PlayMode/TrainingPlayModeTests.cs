@@ -110,7 +110,27 @@ public class TrainingPlayModeTests
         Transform contentRoot = loader.GetType().GetProperty("ContentRoot").GetValue(loader) as Transform;
         Vector3 nextRouteLocal = (Vector3)loader.GetType().GetMethod("SampleCurrentRouteLocal").Invoke(loader, new object[] { 0.02f });
         Vector3 expectedArrowDirection = (contentRoot.TransformPoint(nextRouteLocal) - probe.position).normalized;
-        Assert.That(Vector3.Dot(arrow.transform.forward, expectedArrowDirection), Is.GreaterThan(0.9f));
+        Camera endoscope = controllerType.GetField("endoscopeCamera").GetValue(controller) as Camera;
+        Vector3 cameraDirection = endoscope.transform.InverseTransformDirection(expectedArrowDirection);
+        Vector2 expectedScreenDirection = new Vector2(cameraDirection.x, cameraDirection.y);
+        if (expectedScreenDirection.sqrMagnitude < 0.0025f)
+        {
+            expectedScreenDirection = cameraDirection.z >= 0f ? Vector2.up : Vector2.down;
+        }
+        expectedScreenDirection.Normalize();
+        Component navigation = controller.GetComponent("TrainingNavigationVisuals");
+        Vector2 actualScreenDirection = (Vector2)navigation.GetType().GetProperty("CurrentScreenDirection").GetValue(navigation);
+        Assert.That(Vector2.Dot(actualScreenDirection, expectedScreenDirection), Is.GreaterThan(0.99f));
+        Vector3 displayedDirection = arrow.transform.localRotation * Vector3.up;
+        Assert.That(Vector2.Dot(new Vector2(displayedDirection.x, displayedDirection.y).normalized, expectedScreenDirection), Is.GreaterThan(0.99f));
+
+        GameObject face = GameObject.Find("Guidance Arrow Face");
+        GameObject outline = GameObject.Find("Guidance Arrow Outline");
+        Assert.That(face, Is.Not.Null);
+        Assert.That(outline, Is.Not.Null);
+        Material[] faceMaterials = face.GetComponent<Renderer>().sharedMaterials;
+        Assert.That(faceMaterials.Length, Is.EqualTo(2));
+        Assert.That(faceMaterials[0].color, Is.Not.EqualTo(faceMaterials[1].color), "Arrow head and shaft need contrasting colors.");
         Vector3 before = probe.position;
         MethodInfo tryMove = controllerType.GetMethod("TryMoveProbe", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.That((bool)tryMove.Invoke(controller, new object[] { 0.03f, false }), Is.True);
