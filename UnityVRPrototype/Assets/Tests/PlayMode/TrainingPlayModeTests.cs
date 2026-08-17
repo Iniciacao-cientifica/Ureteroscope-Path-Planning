@@ -60,6 +60,8 @@ public class TrainingPlayModeTests
             yield return null;
             yield return null;
 
+            Assert.That(controller.GetType().GetProperty("State").GetValue(controller).ToString(), Is.EqualTo("Running"),
+                "Keyboard/mouse sessions must calibrate automatically after Start.");
             Camera camera = cameraField.GetValue(controller) as Camera;
             Assert.That(camera, Is.Not.Null, $"Endoscopic camera was destroyed on attempt {attempt + 1}.");
             Assert.That(camera.gameObject.activeInHierarchy, Is.True);
@@ -89,7 +91,6 @@ public class TrainingPlayModeTests
         FieldInfo experienceMode = controllerType.GetField("experienceMode");
         experienceMode.SetValue(controller, Enum.Parse(experienceMode.FieldType, "Exploration"));
         controllerType.GetMethod("BeginSession").Invoke(controller, null);
-        controllerType.GetMethod("RequestCalibration").Invoke(controller, null);
         yield return null;
         yield return null;
 
@@ -169,7 +170,6 @@ public class TrainingPlayModeTests
 
         Type controllerType = controller.GetType();
         controllerType.GetMethod("BeginSession").Invoke(controller, null);
-        controllerType.GetMethod("RequestCalibration").Invoke(controller, null);
         yield return null;
         yield return null;
         Assert.That(controllerType.GetProperty("State").GetValue(controller).ToString(), Is.EqualTo("Running"));

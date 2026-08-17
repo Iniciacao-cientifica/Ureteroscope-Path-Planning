@@ -371,10 +371,18 @@ public class UreteroscopyTrainingController : MonoBehaviour
             ? new SerialControllerInput(serialPort)
             : new KeyboardTrainingInput(millimetersPerEncoderTick, mouseSensitivity);
         State = TrainingSessionState.Calibrating;
+        calibrateRequested = inputMode == TrainingInputMode.Keyboard;
         navigationVisuals?.SetPresentation(false, experienceMode == TrainingExperienceMode.Exploration);
-        feedbackMessage = experienceMode == TrainingExperienceMode.Exploration
-            ? "Calibre o controle para iniciar a exploração livre."
-            : "Mantenha a vareta imóvel e pressione Calibrar (ou C).";
+        if (inputMode == TrainingInputMode.Keyboard)
+        {
+            feedbackMessage = "Ativando teclado e mouse...";
+        }
+        else
+        {
+            feedbackMessage = experienceMode == TrainingExperienceMode.Exploration
+                ? "Mantenha a vareta imóvel e calibre para iniciar a exploração livre."
+                : "Mantenha a vareta imóvel e pressione Calibrar.";
+        }
     }
 
     public void RequestCalibration()
@@ -667,6 +675,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         collisionFlashUntil = 0f;
         showGiveUpConfirmation = false;
         incompleteHeading = "SESSÃO INCOMPLETA — DNF";
+        calibrateRequested = false;
         previousAction = false;
         previousCalibrate = false;
         wasContacting = false;
