@@ -388,6 +388,7 @@ MonoBehaviour:
   frameCaseOnLoad: 0
   enableVrRuntimeObjects: 0
   enableInformationPanel: 0
+  enableKeyboardShortcuts: 0
   mapMedicalZToUnityY: 1
   voxelToMeterScale: 0.002
   maximumTabletopSize: 10

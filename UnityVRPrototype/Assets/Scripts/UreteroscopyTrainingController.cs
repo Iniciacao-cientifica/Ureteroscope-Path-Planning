@@ -165,12 +165,24 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private void PrepareLoadedCase()
     {
         if (caseLoader == null || !caseLoader.IsReady || caseLoader.ContentRoot == null) return;
-        if (probe != null) Destroy(probe.gameObject);
+        if (probe != null)
+        {
+            PreserveEndoscopeCamera();
+            Destroy(probe.gameObject);
+            probe = null;
+        }
         if (interiorVisualRoot != null) Destroy(interiorVisualRoot);
+        EnsureCameras();
         CreateInteriorVisual();
         CreateProbe();
         ConfigureMinimap();
         ApplyDifficultyVisuals();
+    }
+
+    private void PreserveEndoscopeCamera()
+    {
+        if (endoscopeCamera == null) return;
+        endoscopeCamera.transform.SetParent(transform, false);
     }
 
     private void EnsureCameras()
@@ -180,8 +192,11 @@ public class UreteroscopyTrainingController : MonoBehaviour
             Camera existing = Camera.main;
             GameObject cameraObject = existing != null ? existing.gameObject : new GameObject("Endoscopic Camera");
             endoscopeCamera = existing != null ? existing : cameraObject.AddComponent<Camera>();
-            cameraObject.tag = "MainCamera";
         }
+        endoscopeCamera.gameObject.tag = "MainCamera";
+        endoscopeCamera.gameObject.SetActive(true);
+        endoscopeCamera.enabled = true;
+        endoscopeCamera.targetTexture = null;
         endoscopeCamera.nearClipPlane = 0.001f;
         endoscopeCamera.farClipPlane = 3f;
         endoscopeCamera.fieldOfView = 78f;
@@ -194,16 +209,21 @@ public class UreteroscopyTrainingController : MonoBehaviour
             GameObject minimapObject = new GameObject("Training Minimap Camera");
             minimapCamera = minimapObject.AddComponent<Camera>();
         }
+        minimapCamera.gameObject.SetActive(true);
+        minimapCamera.enabled = true;
         minimapCamera.orthographic = true;
         minimapCamera.clearFlags = CameraClearFlags.SolidColor;
         minimapCamera.backgroundColor = new Color(0.015f, 0.035f, 0.055f);
         minimapCamera.cullingMask &= ~(1 << InteriorLayer);
         minimapCamera.depth = -10f;
-        minimapTexture = new RenderTexture(512, 512, 16, RenderTextureFormat.ARGB32)
+        if (minimapTexture == null)
         {
-            name = "Training Minimap"
-        };
-        minimapTexture.Create();
+            minimapTexture = new RenderTexture(512, 512, 16, RenderTextureFormat.ARGB32)
+            {
+                name = "Training Minimap"
+            };
+        }
+        if (!minimapTexture.IsCreated()) minimapTexture.Create();
         minimapCamera.targetTexture = minimapTexture;
     }
 
@@ -559,11 +579,17 @@ public class UreteroscopyTrainingController : MonoBehaviour
             if (inputMode == TrainingInputMode.SerialUsb && GUI.Button(new Rect(28, 232, 341, 30), $"CALIBRAR ENCODER 100 mm ({millimetersPerEncoderTick:F4} mm/tick)"))
             {
                 BeginEncoderCalibration();
+                return;
+            }
+            else if (inputMode == TrainingInputMode.Keyboard)
+            {
+                GUI.Label(new Rect(28, 230, 341, 42), "Mouse: mirar | Esq./Dir.: avançar/recuar\nW/S e setas também funcionam", centeredStyle);
             }
             if (GUI.Button(new Rect(28, 274, 341, 44), "INICIAR TREINAMENTO"))
             {
                 ApplyDifficultyVisuals();
                 BeginSession();
+                return;
             }
         }
         else if (State == TrainingSessionState.LoadingCase)
@@ -577,18 +603,27 @@ public class UreteroscopyTrainingController : MonoBehaviour
             if (encoderCalibrationMode)
             {
                 if (GUI.Button(new Rect(28, 160, 105, 32), "1. MARCAR ZERO")) MarkEncoderCalibrationZero();
-                if (GUI.Button(new Rect(138, 160, 135, 32), "2. CONCLUIR 100 mm")) FinishEncoderCalibration();
+                if (GUI.Button(new Rect(138, 160, 135, 32), "2. CONCLUIR 100 mm"))
+                {
+                    FinishEncoderCalibration();
+                    return;
+                }
                 if (GUI.Button(new Rect(278, 160, 91, 32), "Cancelar"))
                 {
                     encoderCalibrationMode = false;
                     StopInput();
                     State = TrainingSessionState.Ready;
+                    return;
                 }
             }
             else
             {
                 if (State == TrainingSessionState.Calibrating && GUI.Button(new Rect(28, 160, 165, 32), "CALIBRAR AGORA")) RequestCalibration();
-                if (GUI.Button(new Rect(204, 160, 165, 32), "Cancelar")) AbortSession();
+                if (GUI.Button(new Rect(204, 160, 165, 32), "Cancelar"))
+                {
+                    AbortSession();
+                    return;
+                }
             }
         }
         else if (State == TrainingSessionState.Running)
@@ -613,6 +648,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
             {
                 PrepareLoadedCase();
                 State = TrainingSessionState.Ready;
+                return;
             }
         }
 

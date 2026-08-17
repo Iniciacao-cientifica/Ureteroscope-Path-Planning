@@ -125,7 +125,9 @@ public sealed class KeyboardTrainingInput : ITrainingInputSource
         yaw += yawInput * 55f * Time.deltaTime;
         pitch = Mathf.Clamp(pitch + pitchInput * 55f * Time.deltaTime, -80f, 80f);
         roll += rollInput * 70f * Time.deltaTime;
-        float advanceMillimeters = Axis(KeyCode.W, KeyCode.S) * 18f * Time.deltaTime;
+        float keyboardAdvance = Axis(KeyCode.W, KeyCode.S);
+        float mouseAdvance = (Input.GetMouseButton(0) ? 1f : 0f) - (Input.GetMouseButton(1) ? 1f : 0f);
+        float advanceMillimeters = Mathf.Clamp(keyboardAdvance + mouseAdvance, -1f, 1f) * 18f * Time.deltaTime;
         tickAccumulator += advanceMillimeters * ticksPerMillimeter;
         latest = new TrainingInputFrame
         {
@@ -133,7 +135,7 @@ public sealed class KeyboardTrainingInput : ITrainingInputSource
             timestampMilliseconds = (long)(Time.realtimeSinceStartupAsDouble * 1000.0),
             orientation = Quaternion.Euler(pitch, yaw, roll),
             encoderTicks = (long)Math.Round(tickAccumulator),
-            actionPressed = Input.GetKey(KeyCode.Space),
+            actionPressed = Input.GetKey(KeyCode.Space) || Input.GetMouseButton(2),
             calibratePressed = Input.GetKey(KeyCode.C),
             imuOk = true,
             firmwareVersion = FirmwareVersion

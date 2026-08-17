@@ -24,6 +24,7 @@ public class VrCaseLoader : MonoBehaviour
     public bool frameCaseOnLoad = true;
     public bool enableVrRuntimeObjects = true;
     public bool enableInformationPanel = true;
+    public bool enableKeyboardShortcuts = true;
     public bool mapMedicalZToUnityY = true;
     public float voxelToMeterScale = 0.002f;
     public float maximumTabletopSize = 0.75f;
@@ -121,7 +122,10 @@ public class VrCaseLoader : MonoBehaviour
 
     private void Update()
     {
-        HandleKeyboardInput();
+        if (enableKeyboardShortcuts)
+        {
+            HandleKeyboardInput();
+        }
         if (enableQuestControllerInput)
         {
             HandleQuestControllerInput();

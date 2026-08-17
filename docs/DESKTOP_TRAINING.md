@@ -22,8 +22,9 @@ No modo teclado:
 
 - `W/S`: avanço e recuo;
 - mouse ou setas: inclinação e direção;
+- botão esquerdo/direito do mouse: avanço e recuo (alternativa ao `W/S`);
 - `Q/E`: rotação axial;
-- `Espaço`: botão de ação;
+- `Espaço` ou botão central do mouse: botão de ação;
 - `C`: calibração/recentralização.
 
 Se o Windows SmartScreen bloquear o executável compilado localmente, selecione `Mais informações > Executar assim mesmo`. Não faça isso com executáveis recebidos de origem desconhecida.

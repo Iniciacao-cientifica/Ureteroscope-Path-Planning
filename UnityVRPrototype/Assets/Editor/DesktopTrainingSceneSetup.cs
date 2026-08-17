@@ -33,6 +33,7 @@ public static class DesktopTrainingSceneSetup
         loader.frameCaseOnLoad = false;
         loader.enableVrRuntimeObjects = false;
         loader.enableInformationPanel = false;
+        loader.enableKeyboardShortcuts = false;
         loader.enableQuestControllerInput = false;
         loader.maximumTabletopSize = 10f;
 
