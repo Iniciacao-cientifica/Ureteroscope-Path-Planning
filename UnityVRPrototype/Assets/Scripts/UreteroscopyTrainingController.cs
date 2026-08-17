@@ -14,6 +14,12 @@ public enum TrainingInputMode
     SerialUsb
 }
 
+public enum TrainingExperienceMode
+{
+    Training,
+    Exploration
+}
+
 public enum TrainingSessionState
 {
     LoadingCase,
@@ -29,12 +35,14 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private const int InteriorLayer = 29;
     private const int MinimapOnlyLayer = 30;
     private const string EncoderScalePreference = "UreteroscopyTraining.MillimetersPerEncoderTick";
+    private const string MouseSensitivityPreference = "UreteroscopyTraining.MouseSensitivity";
 
     [Header("Case and cameras")]
     public VrCaseLoader caseLoader;
     public Camera endoscopeCamera;
     public Camera minimapCamera;
     public TrainingDifficulty difficulty = TrainingDifficulty.Tutorial;
+    public TrainingExperienceMode experienceMode = TrainingExperienceMode.Training;
 
     [Header("Physical probe")]
     public float tipRadiusMeters = 0.002f;
@@ -45,9 +53,15 @@ public class UreteroscopyTrainingController : MonoBehaviour
     public float targetAngleToleranceDegrees = 15f;
     public float targetStableSeconds = 0.5f;
 
+    [Header("Training safety")]
+    public float maximumRouteDeviationMillimeters = 15f;
+    public int maximumCollisionEvents = 5;
+    public float collisionFlashSeconds = 0.4f;
+
     [Header("Input")]
     public TrainingInputMode inputMode = TrainingInputMode.Keyboard;
     public string serialPort = "AUTO";
+    [Range(0.5f, 4f)] public float mouseSensitivity = 2f;
 
     public TrainingSessionState State { get; private set; } = TrainingSessionState.LoadingCase;
     public float ElapsedSeconds => elapsedSeconds;
@@ -58,6 +72,8 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private Transform probe;
     private GameObject interiorVisualRoot;
     private RenderTexture minimapTexture;
+    private TrainingNavigationVisuals navigationVisuals;
+    private Vector3[] routePositions = Array.Empty<Vector3>();
     private Quaternion neutralOrientation = Quaternion.identity;
     private Quaternion initialProbeRotation = Quaternion.identity;
     private TrainingInputFrame latestFrame;
@@ -75,6 +91,9 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private int collisionEvents;
     private float currentDeviationMeters;
     private float targetStableTimer;
+    private float collisionFlashUntil;
+    private bool showGiveUpConfirmation;
+    private string incompleteHeading = "SESSÃO INCOMPLETA — DNF";
     private string participantCode = "ANON";
     private string feedbackMessage = "";
     private float feedbackUntil;
@@ -90,7 +109,10 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private void Awake()
     {
         millimetersPerEncoderTick = PlayerPrefs.GetFloat(EncoderScalePreference, millimetersPerEncoderTick);
+        mouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(MouseSensitivityPreference, mouseSensitivity), 0.5f, 4f);
         if (caseLoader == null) caseLoader = FindAnyObjectByType<VrCaseLoader>();
+        navigationVisuals = GetComponent<TrainingNavigationVisuals>();
+        if (navigationVisuals == null) navigationVisuals = gameObject.AddComponent<TrainingNavigationVisuals>();
         EnsureCameras();
     }
 
@@ -134,16 +156,33 @@ public class UreteroscopyTrainingController : MonoBehaviour
                 feedbackMessage = "Sensor desconectado. Movimento pausado.";
                 return;
             }
+            if (showGiveUpConfirmation)
+            {
+                if (receivedFrame)
+                {
+                    lastEncoderTicks = latestFrame.encoderTicks;
+                    previousAction = latestFrame.actionPressed;
+                }
+                return;
+            }
             if (receivedFrame) ProcessFrame(latestFrame);
-            elapsedSeconds += Time.deltaTime;
-            if (wasContacting) wallContactSeconds += Time.deltaTime;
-            UpdateTargetAlignment();
+            if (experienceMode == TrainingExperienceMode.Training && State == TrainingSessionState.Running)
+            {
+                elapsedSeconds += Time.deltaTime;
+                if (wasContacting) wallContactSeconds += Time.deltaTime;
+                UpdateTargetAlignment();
+            }
         }
         else if (State == TrainingSessionState.SensorPaused && inputSource != null && inputSource.IsConnected)
         {
             State = TrainingSessionState.Calibrating;
             feedbackMessage = "Controle reconectado. Recalibre antes de continuar.";
         }
+    }
+
+    private void LateUpdate()
+    {
+        if (State == TrainingSessionState.Running) navigationVisuals?.TickArrow();
     }
 
     private void HandleCaseReady()
@@ -177,6 +216,8 @@ public class UreteroscopyTrainingController : MonoBehaviour
         CreateProbe();
         ConfigureMinimap();
         ApplyDifficultyVisuals();
+        routePositions = caseLoader.CopyCurrentRoutePositions();
+        navigationVisuals?.Configure(endoscopeCamera, caseLoader, probe, routePositions);
     }
 
     private void PreserveEndoscopeCamera()
@@ -198,7 +239,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         endoscopeCamera.enabled = true;
         endoscopeCamera.targetTexture = null;
         endoscopeCamera.nearClipPlane = 0.001f;
-        endoscopeCamera.farClipPlane = 3f;
+        endoscopeCamera.farClipPlane = experienceMode == TrainingExperienceMode.Exploration ? 6f : 3f;
         endoscopeCamera.fieldOfView = 78f;
         endoscopeCamera.clearFlags = CameraClearFlags.SolidColor;
         endoscopeCamera.backgroundColor = new Color(0.025f, 0.005f, 0.008f);
@@ -214,7 +255,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         minimapCamera.orthographic = true;
         minimapCamera.clearFlags = CameraClearFlags.SolidColor;
         minimapCamera.backgroundColor = new Color(0.015f, 0.035f, 0.055f);
-        minimapCamera.cullingMask &= ~(1 << InteriorLayer);
+        minimapCamera.cullingMask &= ~((1 << InteriorLayer) | (1 << TrainingNavigationVisuals.GuidanceLayer));
         minimapCamera.depth = -10f;
         if (minimapTexture == null)
         {
@@ -323,12 +364,17 @@ public class UreteroscopyTrainingController : MonoBehaviour
     {
         if (State != TrainingSessionState.Ready && State != TrainingSessionState.Finished) return;
         ResetMetrics();
+        PlayerPrefs.SetFloat(MouseSensitivityPreference, Mathf.Clamp(mouseSensitivity, 0.5f, 4f));
+        PlayerPrefs.Save();
         PrepareLoadedCase();
         inputSource = inputMode == TrainingInputMode.SerialUsb
             ? new SerialControllerInput(serialPort)
-            : new KeyboardTrainingInput(millimetersPerEncoderTick);
+            : new KeyboardTrainingInput(millimetersPerEncoderTick, mouseSensitivity);
         State = TrainingSessionState.Calibrating;
-        feedbackMessage = "Mantenha a vareta imóvel e pressione Calibrar (ou C).";
+        navigationVisuals?.SetPresentation(false, experienceMode == TrainingExperienceMode.Exploration);
+        feedbackMessage = experienceMode == TrainingExperienceMode.Exploration
+            ? "Calibre o controle para iniciar a exploração livre."
+            : "Mantenha a vareta imóvel e pressione Calibrar (ou C).";
     }
 
     public void RequestCalibration()
@@ -392,7 +438,10 @@ public class UreteroscopyTrainingController : MonoBehaviour
         lastEncoderTicks = frame.encoderTicks;
         previousAction = frame.actionPressed;
         State = TrainingSessionState.Running;
-        feedbackMessage = "Calibrado. Navegue até a pedra.";
+        navigationVisuals?.SetPresentation(true, experienceMode == TrainingExperienceMode.Exploration);
+        feedbackMessage = experienceMode == TrainingExperienceMode.Exploration
+            ? "Exploração livre ativa. A seta indica a rota planejada."
+            : "Calibrado. Navegue até a pedra.";
         feedbackUntil = Time.unscaledTime + 2f;
     }
 
@@ -406,24 +455,20 @@ public class UreteroscopyTrainingController : MonoBehaviour
         long tickDelta = frame.encoderTicks - lastEncoderTicks;
         lastEncoderTicks = frame.encoderTicks;
         float deltaMeters = Mathf.Clamp(TrainingInputMath.TicksToMeters(tickDelta, millimetersPerEncoderTick), -0.02f, 0.02f);
-        bool contacting = deltaMeters > 0f && !TryMoveProbe(deltaMeters);
-        if (contacting)
-        {
-            if (!wasContacting)
-            {
-                collisionEvents++;
-                feedbackMessage = "Contato com a parede: recue e corrija a direção.";
-                feedbackUntil = Time.unscaledTime + 1.5f;
-            }
-        }
-        wasContacting = contacting;
+        bool enforceSafety = experienceMode == TrainingExperienceMode.Training;
+        bool contacting = Mathf.Abs(deltaMeters) > 0.000001f && !TryMoveProbe(deltaMeters, enforceSafety);
+        UpdateCollisionState(enforceSafety && contacting);
+        if (State == TrainingSessionState.Finished) return;
 
-        currentDeviationMeters = TrainingMetrics.DistanceToPolyline(probe.localPosition, caseLoader.CopyCurrentRoutePositions());
-        squaredDeviationSum += currentDeviationMeters * currentDeviationMeters;
-        deviationSamples++;
+        currentDeviationMeters = TrainingMetrics.DistanceToPolyline(probe.localPosition, routePositions);
+        if (enforceSafety)
+        {
+            squaredDeviationSum += currentDeviationMeters * currentDeviationMeters;
+            deviationSamples++;
+        }
 
         bool actionEdge = frame.actionPressed && !previousAction;
-        if (actionEdge)
+        if (enforceSafety && actionEdge)
         {
             if (targetStableTimer >= targetStableSeconds) FinishSession(true);
             else
@@ -435,28 +480,81 @@ public class UreteroscopyTrainingController : MonoBehaviour
         previousAction = frame.actionPressed;
     }
 
-    private bool TryMoveProbe(float deltaMeters)
+    private void UpdateCollisionState(bool contacting)
+    {
+        if (contacting && !wasContacting)
+        {
+            collisionEvents++;
+            collisionFlashUntil = Time.unscaledTime + Mathf.Max(0.1f, collisionFlashSeconds);
+            feedbackMessage = $"Contato bloqueado — colisão {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)}.";
+            feedbackUntil = Time.unscaledTime + 1.5f;
+            if (collisionEvents >= Mathf.Max(1, maximumCollisionEvents))
+            {
+                FinishSession(false, "LIMITE DE COLISÕES — DNF");
+                return;
+            }
+        }
+        wasContacting = contacting;
+    }
+
+    private bool TryMoveProbe(float deltaMeters, bool enforceSafety)
     {
         if (probe == null || Mathf.Abs(deltaMeters) < 0.000001f) return true;
         Vector3 direction = deltaMeters >= 0f ? probe.forward : -probe.forward;
         float distance = Mathf.Abs(deltaMeters);
-        if (deltaMeters > 0f && Physics.SphereCast(
-            probe.position,
-            tipRadiusMeters,
-            direction,
-            out RaycastHit hit,
-            distance + 0.0005f,
-            ~(1 << InteriorLayer),
-            QueryTriggerInteraction.Ignore))
+        if (!enforceSafety)
         {
-            float permitted = Mathf.Max(0f, hit.distance - 0.0005f);
-            probe.position += direction * permitted;
-            traveledMeters += permitted;
-            return false;
+            probe.position += direction * distance;
+            return true;
         }
-        probe.position += direction * distance;
-        traveledMeters += distance;
-        return true;
+
+        float permittedDistance = distance;
+        bool hitWall;
+        bool previousBackfaceSetting = Physics.queriesHitBackfaces;
+        try
+        {
+            Physics.queriesHitBackfaces = true;
+            hitWall = Physics.SphereCast(
+                probe.position,
+                tipRadiusMeters,
+                direction,
+                out RaycastHit hit,
+                distance + 0.0005f,
+                1 << MinimapOnlyLayer,
+                QueryTriggerInteraction.Ignore
+            );
+            if (hitWall) permittedDistance = Mathf.Clamp(hit.distance - 0.0005f, 0f, distance);
+        }
+        finally
+        {
+            Physics.queriesHitBackfaces = previousBackfaceSetting;
+        }
+
+        float corridorRadius = Mathf.Max(tipRadiusMeters * 2f, maximumRouteDeviationMillimeters * 0.001f);
+        float safeDistance = FindSafeRouteDistance(direction, permittedDistance, corridorRadius);
+        bool hitSafetyBoundary = safeDistance + 0.000001f < permittedDistance;
+        probe.position += direction * safeDistance;
+        traveledMeters += safeDistance;
+        return !hitWall && !hitSafetyBoundary;
+    }
+
+    private float FindSafeRouteDistance(Vector3 direction, float requestedDistance, float corridorRadius)
+    {
+        if (requestedDistance <= 0f || routePositions == null || routePositions.Length < 2) return 0f;
+        Vector3 requestedWorld = probe.position + direction * requestedDistance;
+        Vector3 requestedLocal = caseLoader.ContentRoot.InverseTransformPoint(requestedWorld);
+        if (TrainingMetrics.IsWithinRouteCorridor(requestedLocal, routePositions, corridorRadius)) return requestedDistance;
+
+        float low = 0f;
+        float high = requestedDistance;
+        for (int iteration = 0; iteration < 8; iteration++)
+        {
+            float middle = (low + high) * 0.5f;
+            Vector3 candidateLocal = caseLoader.ContentRoot.InverseTransformPoint(probe.position + direction * middle);
+            if (TrainingMetrics.IsWithinRouteCorridor(candidateLocal, routePositions, corridorRadius)) low = middle;
+            else high = middle;
+        }
+        return low;
     }
 
     private void UpdateTargetAlignment()
@@ -481,13 +579,54 @@ public class UreteroscopyTrainingController : MonoBehaviour
     {
         if (State == TrainingSessionState.Running || State == TrainingSessionState.Calibrating || State == TrainingSessionState.SensorPaused)
         {
-            FinishSession(false);
+            if (experienceMode == TrainingExperienceMode.Exploration) ExitExploration();
+            else FinishSession(false, "DESISTÊNCIA — DNF");
         }
     }
 
-    private void FinishSession(bool completed)
+    public void RequestGiveUpConfirmation()
     {
+        if (experienceMode == TrainingExperienceMode.Training &&
+            (State == TrainingSessionState.Running || State == TrainingSessionState.Calibrating || State == TrainingSessionState.SensorPaused))
+        {
+            showGiveUpConfirmation = true;
+        }
+    }
+
+    public void CancelGiveUpConfirmation()
+    {
+        showGiveUpConfirmation = false;
+    }
+
+    public void ConfirmGiveUp()
+    {
+        if (!showGiveUpConfirmation) return;
+        showGiveUpConfirmation = false;
+        FinishSession(false, "DESISTÊNCIA — DNF");
+    }
+
+    public void ExitExploration()
+    {
+        if (experienceMode != TrainingExperienceMode.Exploration) return;
+        showGiveUpConfirmation = false;
+        StopInput();
+        navigationVisuals?.SetPresentation(false, false);
+        ResetMetrics();
+        PrepareLoadedCase();
+        State = TrainingSessionState.Ready;
+    }
+
+    private void FinishSession(bool completed, string unfinishedTitle = "SESSÃO INCOMPLETA — DNF")
+    {
+        if (experienceMode == TrainingExperienceMode.Exploration)
+        {
+            ExitExploration();
+            return;
+        }
         State = TrainingSessionState.Finished;
+        incompleteHeading = unfinishedTitle;
+        showGiveUpConfirmation = false;
+        navigationVisuals?.SetPresentation(false, false);
         float rmsMeters = deviationSamples > 0 ? Mathf.Sqrt(squaredDeviationSum / deviationSamples) : 0f;
         VrRouteData route = caseLoader.CurrentRoute;
         float plannedMillimeters = route?.metrics != null && route.metrics.smoothed_length_mm > 0f
@@ -525,6 +664,9 @@ public class UreteroscopyTrainingController : MonoBehaviour
         collisionEvents = 0;
         currentDeviationMeters = 0f;
         targetStableTimer = 0f;
+        collisionFlashUntil = 0f;
+        showGiveUpConfirmation = false;
+        incompleteHeading = "SESSÃO INCOMPLETA — DNF";
         previousAction = false;
         previousCalibrate = false;
         wasContacting = false;
@@ -535,7 +677,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private void ApplyDifficultyVisuals()
     {
         if (caseLoader?.RouteRoot == null) return;
-        caseLoader.RouteRoot.gameObject.SetActive(difficulty != TrainingDifficulty.Advanced);
+        caseLoader.RouteRoot.gameObject.SetActive(experienceMode == TrainingExperienceMode.Exploration || difficulty != TrainingDifficulty.Advanced);
         int routeLayer = difficulty == TrainingDifficulty.Intermediate ? MinimapOnlyLayer : 0;
         SetLayerRecursively(caseLoader.RouteRoot, routeLayer);
     }
@@ -556,36 +698,65 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private void OnGUI()
     {
         EnsureGuiStyles();
-        GUI.Box(new Rect(14, 14, 390, State == TrainingSessionState.Ready ? 350 : 210), "");
+        if (Time.unscaledTime < collisionFlashUntil)
+        {
+            float remaining = Mathf.Clamp01((collisionFlashUntil - Time.unscaledTime) / Mathf.Max(0.1f, collisionFlashSeconds));
+            Color previous = GUI.color;
+            GUI.color = new Color(1f, 0.05f, 0.03f, 0.18f + remaining * 0.28f);
+            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
+            GUI.color = previous;
+        }
+
+        float panelHeight = State == TrainingSessionState.Ready
+            ? 400f
+            : State == TrainingSessionState.Running
+                ? experienceMode == TrainingExperienceMode.Training ? 265f : 235f
+                : 220f;
+        GUI.Box(new Rect(14, 14, 430, panelHeight), "");
         GUI.Label(new Rect(28, 24, 360, 34), "TREINAMENTO DE URETEROSCOPIA", titleStyle);
-        GUI.Label(new Rect(28, 60, 360, 24), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", labelStyle);
+        GUI.Label(new Rect(28, 60, 400, 24), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", labelStyle);
 
         if (State == TrainingSessionState.Ready)
         {
-            GUI.Label(new Rect(28, 92, 130, 24), "Código anônimo:", labelStyle);
-            participantCode = GUI.TextField(new Rect(165, 90, 205, 27), participantCode, 16);
-            GUI.Label(new Rect(28, 128, 100, 24), "Dificuldade:", labelStyle);
-            if (GUI.Toggle(new Rect(130, 126, 75, 26), difficulty == TrainingDifficulty.Tutorial, "Tutorial", "Button")) difficulty = TrainingDifficulty.Tutorial;
-            if (GUI.Toggle(new Rect(207, 126, 85, 26), difficulty == TrainingDifficulty.Intermediate, "Intermed.", "Button")) difficulty = TrainingDifficulty.Intermediate;
-            if (GUI.Toggle(new Rect(294, 126, 75, 26), difficulty == TrainingDifficulty.Advanced, "Avançado", "Button")) difficulty = TrainingDifficulty.Advanced;
-            GUI.Label(new Rect(28, 164, 100, 24), "Controle:", labelStyle);
-            if (GUI.Toggle(new Rect(130, 162, 110, 26), inputMode == TrainingInputMode.Keyboard, "Teclado", "Button")) inputMode = TrainingInputMode.Keyboard;
-            if (GUI.Toggle(new Rect(242, 162, 127, 26), inputMode == TrainingInputMode.SerialUsb, "Vareta USB", "Button")) inputMode = TrainingInputMode.SerialUsb;
+            GUI.Label(new Rect(28, 91, 90, 24), "Modo:", labelStyle);
+            if (GUI.Toggle(new Rect(120, 88, 140, 28), experienceMode == TrainingExperienceMode.Training, "Treinamento", "Button")) experienceMode = TrainingExperienceMode.Training;
+            if (GUI.Toggle(new Rect(264, 88, 164, 28), experienceMode == TrainingExperienceMode.Exploration, "Exploração livre", "Button")) experienceMode = TrainingExperienceMode.Exploration;
+
+            if (experienceMode == TrainingExperienceMode.Training)
+            {
+                GUI.Label(new Rect(28, 128, 130, 24), "Código anônimo:", labelStyle);
+                participantCode = GUI.TextField(new Rect(165, 126, 205, 27), participantCode, 16);
+                GUI.Label(new Rect(28, 164, 100, 24), "Dificuldade:", labelStyle);
+                if (GUI.Toggle(new Rect(130, 162, 75, 26), difficulty == TrainingDifficulty.Tutorial, "Tutorial", "Button")) difficulty = TrainingDifficulty.Tutorial;
+                if (GUI.Toggle(new Rect(207, 162, 85, 26), difficulty == TrainingDifficulty.Intermediate, "Intermed.", "Button")) difficulty = TrainingDifficulty.Intermediate;
+                if (GUI.Toggle(new Rect(294, 162, 75, 26), difficulty == TrainingDifficulty.Advanced, "Avançado", "Button")) difficulty = TrainingDifficulty.Advanced;
+            }
+            else
+            {
+                GUI.Label(new Rect(28, 126, 400, 62), "Explore dentro e fora do modelo sem pontuação ou CSV.\nA seta 3D continua indicando a rota planejada.", labelStyle);
+            }
+
+            GUI.Label(new Rect(28, 200, 100, 24), "Controle:", labelStyle);
+            if (GUI.Toggle(new Rect(130, 198, 110, 26), inputMode == TrainingInputMode.Keyboard, "Teclado", "Button")) inputMode = TrainingInputMode.Keyboard;
+            if (GUI.Toggle(new Rect(242, 198, 127, 26), inputMode == TrainingInputMode.SerialUsb, "Vareta USB", "Button")) inputMode = TrainingInputMode.SerialUsb;
             if (inputMode == TrainingInputMode.SerialUsb)
             {
-                GUI.Label(new Rect(28, 199, 100, 24), "Porta COM:", labelStyle);
-                serialPort = GUI.TextField(new Rect(130, 197, 239, 27), serialPort, 16);
+                GUI.Label(new Rect(28, 236, 100, 24), "Porta COM:", labelStyle);
+                serialPort = GUI.TextField(new Rect(130, 234, 239, 27), serialPort, 16);
             }
-            if (inputMode == TrainingInputMode.SerialUsb && GUI.Button(new Rect(28, 232, 341, 30), $"CALIBRAR ENCODER 100 mm ({millimetersPerEncoderTick:F4} mm/tick)"))
+            if (inputMode == TrainingInputMode.SerialUsb && GUI.Button(new Rect(28, 272, 400, 30), $"CALIBRAR ENCODER 100 mm ({millimetersPerEncoderTick:F4} mm/tick)"))
             {
                 BeginEncoderCalibration();
                 return;
             }
             else if (inputMode == TrainingInputMode.Keyboard)
             {
-                GUI.Label(new Rect(28, 230, 341, 42), "Mouse: mirar | Esq./Dir.: avançar/recuar\nW/S e setas também funcionam", centeredStyle);
+                GUI.Label(new Rect(28, 234, 135, 24), $"Sensibilidade: {mouseSensitivity:F1}", labelStyle);
+                mouseSensitivity = GUI.HorizontalSlider(new Rect(165, 241, 203, 18), mouseSensitivity, 0.5f, 4f);
+                GUI.Label(new Rect(28, 268, 400, 42), "Mouse: mirar | Esq./Dir.: avançar/recuar\nW/S e setas também funcionam", centeredStyle);
             }
-            if (GUI.Button(new Rect(28, 274, 341, 44), "INICIAR TREINAMENTO"))
+            string startLabel = experienceMode == TrainingExperienceMode.Training ? "INICIAR TREINAMENTO" : "INICIAR EXPLORAÇÃO";
+            if (GUI.Button(new Rect(28, 326, 400, 46), startLabel))
             {
                 ApplyDifficultyVisuals();
                 BeginSession();
@@ -619,27 +790,48 @@ public class UreteroscopyTrainingController : MonoBehaviour
             else
             {
                 if (State == TrainingSessionState.Calibrating && GUI.Button(new Rect(28, 160, 165, 32), "CALIBRAR AGORA")) RequestCalibration();
-                if (GUI.Button(new Rect(204, 160, 165, 32), "Cancelar"))
+                string cancelLabel = experienceMode == TrainingExperienceMode.Training ? "Desistir" : "Sair";
+                if (GUI.Button(new Rect(204, 160, 165, 32), cancelLabel))
                 {
-                    AbortSession();
+                    if (experienceMode == TrainingExperienceMode.Training) RequestGiveUpConfirmation();
+                    else ExitExploration();
                     return;
                 }
             }
         }
         else if (State == TrainingSessionState.Running)
         {
-            GUI.Label(new Rect(28, 89, 350, 24), $"Tempo: {elapsedSeconds:F1}s    Colisões: {collisionEvents}", labelStyle);
-            GUI.Label(new Rect(28, 116, 350, 24), $"Desvio da rota: {CurrentDeviationMillimeters:F1} mm", labelStyle);
-            string target = targetStableTimer > 0f ? $"ALVO ALINHADO {Mathf.Clamp01(targetStableTimer / targetStableSeconds) * 100f:F0}%" : "Procure e alinhe a pedra";
-            GUI.Label(new Rect(28, 143, 350, 24), target, labelStyle);
-            if (GUI.Button(new Rect(285, 160, 84, 26), "Encerrar")) AbortSession();
+            if (experienceMode == TrainingExperienceMode.Training)
+            {
+                GUI.Label(new Rect(28, 89, 390, 24), $"Tempo: {elapsedSeconds:F1}s    Colisões: {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)}", labelStyle);
+                GUI.Label(new Rect(28, 116, 390, 24), $"Desvio da rota: {CurrentDeviationMillimeters:F1} mm", labelStyle);
+                string target = targetStableTimer > 0f ? $"ALVO ALINHADO {Mathf.Clamp01(targetStableTimer / targetStableSeconds) * 100f:F0}%" : "Procure e alinhe a pedra";
+                GUI.Label(new Rect(28, 143, 390, 24), target, labelStyle);
+            }
+            else
+            {
+                GUI.Label(new Rect(28, 89, 390, 24), "EXPLORAÇÃO LIVRE — sem pontuação ou registro CSV", labelStyle);
+                GUI.Label(new Rect(28, 116, 390, 24), $"Distância da rota: {CurrentDeviationMillimeters:F1} mm", labelStyle);
+            }
+            if (inputMode == TrainingInputMode.Keyboard)
+            {
+                string actionHelp = experienceMode == TrainingExperienceMode.Training ? "Botão central ou Espaço: confirmar alvo" : "A seta ciano indica o próximo trecho da rota";
+                GUI.Label(new Rect(28, 171, 400, 38), $"Segure mouse Esq./Dir. para avançar/recuar\n{actionHelp}", centeredStyle);
+            }
+            string endLabel = experienceMode == TrainingExperienceMode.Training ? "DESISTIR" : "SAIR DA EXPLORAÇÃO";
+            if (GUI.Button(new Rect(258, 215, 170, 32), endLabel))
+            {
+                if (experienceMode == TrainingExperienceMode.Training) RequestGiveUpConfirmation();
+                else ExitExploration();
+                return;
+            }
         }
 
         if (State == TrainingSessionState.Finished && lastResult != null)
         {
             Rect panel = new Rect(Screen.width * 0.5f - 245f, Screen.height * 0.5f - 155f, 490f, 310f);
             GUI.Box(panel, "");
-            string heading = lastResult.completed ? $"CONCLUÍDO — NOTA {lastResult.score:F0}/100" : "SESSÃO INCOMPLETA — DNF";
+            string heading = lastResult.completed ? $"CONCLUÍDO — NOTA {lastResult.score:F0}/100" : incompleteHeading;
             GUI.Label(new Rect(panel.x + 25, panel.y + 22, 440, 38), heading, titleStyle);
             GUI.Label(new Rect(panel.x + 25, panel.y + 72, 440, 100),
                 $"Tempo: {lastResult.elapsedSeconds:F1}s\nColisões: {lastResult.collisionEvents}\nDesvio RMS: {lastResult.rmsDeviationMillimeters:F1} mm\nPercurso: {lastResult.traveledMillimeters:F1} mm", labelStyle);
@@ -662,6 +854,24 @@ public class UreteroscopyTrainingController : MonoBehaviour
         if (!string.IsNullOrEmpty(feedbackMessage) && (feedbackUntil <= 0f || Time.unscaledTime <= feedbackUntil) && State == TrainingSessionState.Running)
         {
             GUI.Label(new Rect(Screen.width * 0.5f - 300, Screen.height - 105, 600, 40), feedbackMessage, centeredStyle);
+        }
+
+        if (showGiveUpConfirmation)
+        {
+            Rect confirmation = new Rect(Screen.width * 0.5f - 230f, Screen.height * 0.5f - 105f, 460f, 210f);
+            GUI.Box(confirmation, "");
+            GUI.Label(new Rect(confirmation.x + 24, confirmation.y + 22, 412, 35), "DESISTIR DO TREINAMENTO?", titleStyle);
+            GUI.Label(new Rect(confirmation.x + 24, confirmation.y + 66, 412, 48), "A tentativa será registrada como DNF.", centeredStyle);
+            if (GUI.Button(new Rect(confirmation.x + 24, confirmation.y + 138, 190, 44), "CONTINUAR"))
+            {
+                CancelGiveUpConfirmation();
+                return;
+            }
+            if (GUI.Button(new Rect(confirmation.x + 246, confirmation.y + 138, 190, 44), "CONFIRMAR DNF"))
+            {
+                ConfirmGiveUp();
+                return;
+            }
         }
         GUI.Label(new Rect(12, Screen.height - 35, Screen.width - 24, 25),
             "PROTÓTIPO ACADÊMICO/EDUCACIONAL — NÃO UTILIZAR EM PACIENTES OU PROCEDIMENTOS CLÍNICOS", centeredStyle);

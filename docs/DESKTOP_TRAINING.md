@@ -7,15 +7,17 @@ Protótipo acadêmico/educacional para navegação em uma máscara anatômica re
 - Visão endoscópica na ponta virtual e minimapa externo.
 - Casos, pedras e rotas do pipeline v2 já existente.
 - Tutorial com rota interna, intermediário com rota somente no minimapa e avançado sem rota.
+- Modo `Treinamento`, confinado à anatomia e ao corredor seguro da rota, e modo `Exploração livre`, sem pontuação ou CSV.
 - Controle por teclado/mouse ou ESP32-S3 via USB.
-- Colisões, tempo, desvio RMS, eficiência, pontuação e resultado CSV anônimo.
+- Colisões nas duas direções, tempo, desvio RMS, eficiência, pontuação e resultado CSV anônimo.
+- Seta 3D ciano indicando o próximo trecho da rota e laboratório científico estilizado na exploração.
 - Pausa após 500 ms sem pacotes do controle.
 
 ## Executar o build pronto no Windows
 
 1. Abra `UnityVRPrototype/Builds/Desktop/UreteroscopyTraining.exe`.
 2. Não mova somente o arquivo `.exe`: mantenha-o ao lado da pasta `UreteroscopyTraining_Data`.
-3. Na tela inicial escolha `Teclado`, dificuldade `Tutorial` e um código anônimo, por exemplo `TESTE-001`.
+3. Na tela inicial escolha `Treinamento`, `Teclado`, dificuldade `Tutorial` e um código anônimo, por exemplo `TESTE-001`.
 4. Inicie a sessão e confirme que aparecem a visão interna, o minimapa, a rota, a pedra e as métricas.
 
 No modo teclado:
@@ -26,6 +28,10 @@ No modo teclado:
 - `Q/E`: rotação axial;
 - `Espaço` ou botão central do mouse: botão de ação;
 - `C`: calibração/recentralização.
+
+A sensibilidade do mouse pode ser ajustada entre `0,5` e `4,0` na tela inicial e fica salva para as próximas execuções.
+
+No modo `Exploração livre`, a ponta pode atravessar e sair da anatomia. Esse modo não calcula nota, colisões ou métricas e não grava CSV. O laboratório azul-petróleo é um ambiente visual acadêmico estilizado e não representa anatomia real.
 
 Se o Windows SmartScreen bloquear o executável compilado localmente, selecione `Mais informações > Executar assim mesmo`. Não faça isso com executáveis recebidos de origem desconhecida.
 
@@ -45,6 +51,8 @@ Selecione `Desktop Training Controller` na Hierarchy para ajustar:
 - `Millimeters Per Encoder Tick`: escala de avanço do encoder;
 - `Rotation Smoothing`: suavização da orientação;
 - tolerâncias de distância, ângulo e permanência no alvo;
+- desvio máximo da rota, limite de colisões e duração do flash vermelho;
+- sensibilidade do mouse e modo inicial da experiência;
 - modo de entrada e porta serial padrão.
 
 Selecione `Training Case Loader` para ajustar:
@@ -77,6 +85,7 @@ O jogo pausa depois de 500 ms sem pacotes válidos. Nesse caso confira o cabo US
 - **A vareta não conecta:** feche o Serial Monitor do Arduino, use `AUTO` ou informe a porta COM manualmente.
 - **O movimento avança na direção errada:** refaça a calibração de 100 mm e, se necessário, inverta os canais A/B do encoder.
 - **A orientação deriva:** recoloque a vareta na posição neutra, mantenha-a imóvel e pressione o botão de calibração ou `C` no simulador.
+- **A ponta não atravessa uma abertura no treinamento:** isso é esperado quando a abertura sai do corredor seguro de 15 mm; use `Exploração livre` para inspecionar o exterior.
 
 ## Aprendizado recomendado
 
@@ -100,9 +109,9 @@ Materiais de referência:
 
 ## Regras e dados
 
-A sessão termina quando a ponta permanece por 0,5 s a no máximo `máx(raio da pedra + 5 mm, 8 mm)`, aponta para o alvo com erro de até 15 graus e o usuário aciona o gatilho. Avanço contra a parede é bloqueado; recuo continua permitido.
+A sessão termina quando a ponta permanece por 0,5 s a no máximo `máx(raio da pedra + 5 mm, 8 mm)`, aponta para o alvo com erro de até 15 graus e o usuário aciona o gatilho. Impactos contra faces internas ou externas são bloqueados tanto no avanço quanto no recuo. O corredor de segurança começa em 15 mm ao redor da rota e impede fugas por pequenas aberturas da malha. Manter o movimento pressionado durante um contato conta uma colisão; afastar e colidir novamente inicia outro episódio. A quinta colisão encerra a tentativa como `DNF`.
 
-A nota combina segurança (40), precisão (30), eficiência (20) e tempo (10). Sessões interrompidas são registradas como `DNF` e não recebem nota. O CSV fica em `%USERPROFILE%/AppData/LocalLow/<Company>/<Product>/Sessions/ureteroscopy_sessions.csv` e contém apenas código escolhido pelo pesquisador, caso, rota, dificuldade e métricas. Não digite nome, CPF, prontuário ou outro identificador pessoal.
+A nota combina segurança (40), precisão (30), eficiência (20) e tempo (10). O botão `DESISTIR` pede confirmação; sessões confirmadas são registradas como `DNF` e não recebem nota. O CSV fica em `%USERPROFILE%/AppData/LocalLow/<Company>/<Product>/Sessions/ureteroscopy_sessions.csv` e contém apenas código escolhido pelo pesquisador, caso, rota, dificuldade e métricas. Não digite nome, CPF, prontuário ou outro identificador pessoal.
 
 ## Limitação anatômica
 

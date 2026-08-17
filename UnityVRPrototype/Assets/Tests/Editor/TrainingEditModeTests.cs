@@ -36,6 +36,30 @@ public class TrainingEditModeTests
     }
 
     [Test]
+    public void MouseRotationUsesFrameDeltaWhileKeyboardUsesElapsedTime()
+    {
+        Assert.That(TrainingInputMath.MouseRotationDegrees(3f, 2f), Is.EqualTo(6f).Within(0.00001f));
+        Assert.That(TrainingInputMath.MouseRotationDegrees(3f, 99f), Is.EqualTo(12f).Within(0.00001f));
+        Assert.That(TrainingInputMath.KeyboardRotationDegrees(1f, 70f, 0.5f), Is.EqualTo(35f).Within(0.00001f));
+    }
+
+    [Test]
+    public void RouteProjectionAndSafetyCorridorUsePhysicalMeters()
+    {
+        Vector3[] route = { Vector3.zero, Vector3.forward };
+        float distanceAlong = TrainingMetrics.ClosestDistanceAlongPolyline(
+            new Vector3(0.01f, 0f, 0.4f),
+            route,
+            out float deviation
+        );
+
+        Assert.That(distanceAlong, Is.EqualTo(0.4f).Within(0.00001f));
+        Assert.That(deviation, Is.EqualTo(0.01f).Within(0.00001f));
+        Assert.That(TrainingMetrics.IsWithinRouteCorridor(new Vector3(0.01f, 0f, 0.4f), route, 0.015f), Is.True);
+        Assert.That(TrainingMetrics.IsWithinRouteCorridor(new Vector3(0.01f, 0f, 0.4f), route, 0.005f), Is.False);
+    }
+
+    [Test]
     public void DistanceAndScoreAreDeterministic()
     {
         Vector3[] route = { Vector3.zero, Vector3.forward };
