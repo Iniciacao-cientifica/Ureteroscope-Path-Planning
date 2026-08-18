@@ -60,6 +60,16 @@ public class TrainingEditModeTests
     }
 
     [Test]
+    public void CenteredGuidanceArrowStaysHorizontalAndVerticalTiltIsLimited()
+    {
+        Vector2 centered = TrainingNavigationVisuals.ComputeScreenDirection(Vector3.forward);
+        Vector2 highTarget = TrainingNavigationVisuals.ComputeScreenDirection(new Vector3(0f, 1f, 0.1f));
+
+        Assert.That(Vector2.Dot(centered, Vector2.right), Is.GreaterThan(0.999f));
+        Assert.That(Vector2.Angle(Vector2.right, highTarget), Is.LessThanOrEqualTo(52.01f));
+    }
+
+    [Test]
     public void DistanceAndScoreAreDeterministic()
     {
         Vector3[] route = { Vector3.zero, Vector3.forward };

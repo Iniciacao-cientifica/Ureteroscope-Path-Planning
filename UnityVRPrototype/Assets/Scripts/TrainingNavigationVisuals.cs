@@ -49,17 +49,26 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
         Vector3 direction = targetWorld - probe.position;
         if (direction.sqrMagnitude < 0.0000001f) direction = probe.forward;
         Vector3 cameraDirection = viewingCamera.transform.InverseTransformDirection(direction.normalized);
-        Vector2 screenDirection = new Vector2(cameraDirection.x, cameraDirection.y);
-        if (screenDirection.sqrMagnitude < 0.0025f)
-        {
-            screenDirection = cameraDirection.z >= 0f ? Vector2.up : Vector2.down;
-        }
-        CurrentScreenDirection = screenDirection.normalized;
+        CurrentScreenDirection = ComputeScreenDirection(cameraDirection);
         float angle = -Mathf.Atan2(CurrentScreenDirection.x, CurrentScreenDirection.y) * Mathf.Rad2Deg;
         arrowRoot.transform.localPosition = new Vector3(0f, 0.04f, 0.12f);
         arrowRoot.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
         float pulse = 1f + Mathf.Sin(Time.unscaledTime * 5f) * 0.035f;
         arrowRoot.transform.localScale = Vector3.one * pulse;
+    }
+
+    public static Vector2 ComputeScreenDirection(Vector3 cameraDirection)
+    {
+        if (cameraDirection.sqrMagnitude < 0.000001f) return Vector2.right;
+        cameraDirection.Normalize();
+        const float horizontalDeadZone = 0.035f;
+        const float maximumVerticalAngle = 52f;
+        float horizontalSign = Mathf.Abs(cameraDirection.x) >= horizontalDeadZone
+            ? Mathf.Sign(cameraDirection.x)
+            : cameraDirection.z >= 0f ? 1f : -1f;
+        float verticalAngle = Mathf.Atan2(cameraDirection.y * 0.7f, Mathf.Max(horizontalDeadZone, Mathf.Abs(cameraDirection.x))) * Mathf.Rad2Deg;
+        verticalAngle = Mathf.Clamp(verticalAngle, -maximumVerticalAngle, maximumVerticalAngle) * Mathf.Deg2Rad;
+        return new Vector2(horizontalSign * Mathf.Cos(verticalAngle), Mathf.Sin(verticalAngle)).normalized;
     }
 
     private void EnsureArrow()

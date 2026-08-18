@@ -112,13 +112,9 @@ public class TrainingPlayModeTests
         Vector3 expectedArrowDirection = (contentRoot.TransformPoint(nextRouteLocal) - probe.position).normalized;
         Camera endoscope = controllerType.GetField("endoscopeCamera").GetValue(controller) as Camera;
         Vector3 cameraDirection = endoscope.transform.InverseTransformDirection(expectedArrowDirection);
-        Vector2 expectedScreenDirection = new Vector2(cameraDirection.x, cameraDirection.y);
-        if (expectedScreenDirection.sqrMagnitude < 0.0025f)
-        {
-            expectedScreenDirection = cameraDirection.z >= 0f ? Vector2.up : Vector2.down;
-        }
-        expectedScreenDirection.Normalize();
         Component navigation = controller.GetComponent("TrainingNavigationVisuals");
+        MethodInfo computeScreenDirection = navigation.GetType().GetMethod("ComputeScreenDirection", BindingFlags.Public | BindingFlags.Static);
+        Vector2 expectedScreenDirection = (Vector2)computeScreenDirection.Invoke(null, new object[] { cameraDirection });
         Vector2 actualScreenDirection = (Vector2)navigation.GetType().GetProperty("CurrentScreenDirection").GetValue(navigation);
         Assert.That(Vector2.Dot(actualScreenDirection, expectedScreenDirection), Is.GreaterThan(0.99f));
         Vector3 displayedDirection = arrow.transform.localRotation * Vector3.up;
