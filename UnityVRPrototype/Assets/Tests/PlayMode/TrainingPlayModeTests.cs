@@ -129,8 +129,13 @@ public class TrainingPlayModeTests
         Assert.That(face, Is.Not.Null);
         Assert.That(outline, Is.Not.Null);
         Material[] faceMaterials = face.GetComponent<Renderer>().sharedMaterials;
-        Assert.That(faceMaterials.Length, Is.EqualTo(2));
+        Assert.That(faceMaterials.Length, Is.EqualTo(3));
         Assert.That(faceMaterials[0].color, Is.Not.EqualTo(faceMaterials[1].color), "Arrow head and shaft need contrasting colors.");
+        Assert.That(faceMaterials[2].color, Is.Not.EqualTo(faceMaterials[0].color), "Extruded arrow sides need a darker material.");
+        Mesh arrowMesh = face.GetComponent<MeshFilter>().sharedMesh;
+        Assert.That(arrowMesh.bounds.size.z, Is.GreaterThanOrEqualTo(0.0039f), "Guidance arrow must have real 3D depth.");
+        Assert.That(Quaternion.Angle(face.transform.localRotation, Quaternion.identity), Is.GreaterThan(5f),
+            "The 3D arrow should be tilted so its depth remains visible.");
         Vector3 before = probe.position;
         MethodInfo tryMove = controllerType.GetMethod("TryMoveProbe", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.That((bool)tryMove.Invoke(controller, new object[] { 0.03f, false }), Is.True);

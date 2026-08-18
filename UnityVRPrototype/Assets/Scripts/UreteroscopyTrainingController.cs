@@ -763,7 +763,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
             }
             else
             {
-                GUI.Label(new Rect(28, 126, 400, 62), "Explore dentro e fora do modelo sem pontuação ou CSV.\nA seta colorida indica o próximo trecho da rota.", labelStyle);
+                GUI.Label(new Rect(28, 126, 400, 62), "Explore dentro e fora do modelo sem pontuação ou CSV.\nA seta 3D colorida indica o próximo trecho da rota.", labelStyle);
             }
 
             GUI.Label(new Rect(28, 200, 100, 24), "Controle:", labelStyle);

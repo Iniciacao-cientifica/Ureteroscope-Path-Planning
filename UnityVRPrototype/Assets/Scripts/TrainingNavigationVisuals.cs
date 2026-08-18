@@ -14,6 +14,7 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
     private Material arrowOutlineMaterial;
     private Material arrowShaftMaterial;
     private Material arrowHeadMaterial;
+    private Material arrowSideMaterial;
     private Material environmentMaterial;
     private Material gridMaterial;
 
@@ -72,26 +73,30 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
             Shader shader = Shader.Find("Murillo/Training Overlay Unlit");
             if (shader == null) shader = Shader.Find("Sprites/Default");
             arrowOutlineMaterial = CreateOverlayMaterial(shader, new Color(0.96f, 1f, 1f, 0.98f), 4998);
-            arrowShaftMaterial = CreateOverlayMaterial(shader, new Color(0.04f, 0.30f, 1f, 0.98f), 5000);
-            arrowHeadMaterial = CreateOverlayMaterial(shader, new Color(0.08f, 1f, 0.82f, 1f), 5000);
-            Mesh arrowMesh = BuildFlatArrowMesh();
+            arrowShaftMaterial = CreateOverlayMaterial(shader, new Color(0.05f, 0.48f, 1f, 1f), 5000);
+            arrowHeadMaterial = CreateOverlayMaterial(shader, new Color(0.20f, 0.82f, 1f, 1f), 5000);
+            arrowSideMaterial = CreateOverlayMaterial(shader, new Color(0.015f, 0.10f, 0.42f, 1f), 4999);
+            Mesh arrowMesh = BuildExtrudedArrowMesh();
+            Quaternion modelTilt = Quaternion.Euler(13f, -18f, 0f);
 
             GameObject outline = new GameObject("Guidance Arrow Outline");
             outline.layer = GuidanceLayer;
             outline.transform.SetParent(arrowRoot.transform, false);
             outline.transform.localPosition = new Vector3(0f, 0f, 0.0004f);
-            outline.transform.localScale = Vector3.one * 1.22f;
+            outline.transform.localRotation = modelTilt;
+            outline.transform.localScale = new Vector3(1.22f, 1.22f, 1.12f);
             outline.AddComponent<MeshFilter>().sharedMesh = arrowMesh;
             MeshRenderer outlineRenderer = outline.AddComponent<MeshRenderer>();
-            outlineRenderer.sharedMaterials = new[] { arrowOutlineMaterial, arrowOutlineMaterial };
+            outlineRenderer.sharedMaterials = new[] { arrowOutlineMaterial, arrowOutlineMaterial, arrowOutlineMaterial };
             outlineRenderer.sortingOrder = 10;
 
             GameObject face = new GameObject("Guidance Arrow Face");
             face.layer = GuidanceLayer;
             face.transform.SetParent(arrowRoot.transform, false);
+            face.transform.localRotation = modelTilt;
             face.AddComponent<MeshFilter>().sharedMesh = arrowMesh;
             MeshRenderer faceRenderer = face.AddComponent<MeshRenderer>();
-            faceRenderer.sharedMaterials = new[] { arrowShaftMaterial, arrowHeadMaterial };
+            faceRenderer.sharedMaterials = new[] { arrowShaftMaterial, arrowHeadMaterial, arrowSideMaterial };
             faceRenderer.sortingOrder = 11;
             SetLayerRecursively(arrowRoot.transform, GuidanceLayer);
         }
@@ -213,22 +218,43 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
         }
     }
 
-    private static Mesh BuildFlatArrowMesh()
+    private static Mesh BuildExtrudedArrowMesh()
     {
-        Vector3[] vertices =
+        Vector2[] profile =
         {
-            new Vector3(-0.0028f, -0.009f, 0f),
-            new Vector3(0.0028f, -0.009f, 0f),
-            new Vector3(0.0028f, 0.002f, 0f),
-            new Vector3(0.008f, 0.002f, 0f),
-            new Vector3(0f, 0.014f, 0f),
-            new Vector3(-0.008f, 0.002f, 0f),
-            new Vector3(-0.0028f, 0.002f, 0f)
+            new Vector2(-0.0028f, -0.009f),
+            new Vector2(0.0028f, -0.009f),
+            new Vector2(0.0028f, 0.002f),
+            new Vector2(0.008f, 0.002f),
+            new Vector2(0f, 0.014f),
+            new Vector2(-0.008f, 0.002f),
+            new Vector2(-0.0028f, 0.002f)
         };
-        Mesh mesh = new Mesh { name = "Flat Route Guidance Arrow", subMeshCount = 2 };
+        Vector3[] vertices = new Vector3[profile.Length * 2];
+        const float halfDepth = 0.002f;
+        for (int index = 0; index < profile.Length; index++)
+        {
+            vertices[index] = new Vector3(profile[index].x, profile[index].y, -halfDepth);
+            vertices[index + profile.Length] = new Vector3(profile[index].x, profile[index].y, halfDepth);
+        }
+        int[] sides = new int[profile.Length * 6];
+        int sideTriangle = 0;
+        for (int index = 0; index < profile.Length; index++)
+        {
+            int next = (index + 1) % profile.Length;
+            sides[sideTriangle++] = index;
+            sides[sideTriangle++] = next;
+            sides[sideTriangle++] = next + profile.Length;
+            sides[sideTriangle++] = index;
+            sides[sideTriangle++] = next + profile.Length;
+            sides[sideTriangle++] = index + profile.Length;
+        }
+        Mesh mesh = new Mesh { name = "Extruded Route Guidance Arrow", subMeshCount = 3 };
         mesh.vertices = vertices;
-        mesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 6 }, 0);
-        mesh.SetTriangles(new[] { 6, 2, 3, 6, 3, 5, 5, 3, 4 }, 1);
+        mesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 6, 7, 13, 9, 7, 9, 8 }, 0);
+        mesh.SetTriangles(new[] { 6, 2, 3, 6, 3, 5, 5, 3, 4, 13, 10, 9, 13, 12, 10, 12, 11, 10 }, 1);
+        mesh.SetTriangles(sides, 2);
+        mesh.RecalculateNormals();
         mesh.RecalculateBounds();
         return mesh;
     }
