@@ -36,6 +36,40 @@ public class TrainingEditModeTests
     }
 
     [Test]
+    public void MouseRotationUsesFrameDeltaWhileKeyboardUsesElapsedTime()
+    {
+        Assert.That(TrainingInputMath.MouseRotationDegrees(3f, 2f), Is.EqualTo(6f).Within(0.00001f));
+        Assert.That(TrainingInputMath.MouseRotationDegrees(3f, 99f), Is.EqualTo(12f).Within(0.00001f));
+        Assert.That(TrainingInputMath.KeyboardRotationDegrees(1f, 70f, 0.5f), Is.EqualTo(35f).Within(0.00001f));
+    }
+
+    [Test]
+    public void RouteProjectionAndSafetyCorridorUsePhysicalMeters()
+    {
+        Vector3[] route = { Vector3.zero, Vector3.forward };
+        float distanceAlong = TrainingMetrics.ClosestDistanceAlongPolyline(
+            new Vector3(0.01f, 0f, 0.4f),
+            route,
+            out float deviation
+        );
+
+        Assert.That(distanceAlong, Is.EqualTo(0.4f).Within(0.00001f));
+        Assert.That(deviation, Is.EqualTo(0.01f).Within(0.00001f));
+        Assert.That(TrainingMetrics.IsWithinRouteCorridor(new Vector3(0.01f, 0f, 0.4f), route, 0.015f), Is.True);
+        Assert.That(TrainingMetrics.IsWithinRouteCorridor(new Vector3(0.01f, 0f, 0.4f), route, 0.005f), Is.False);
+    }
+
+    [Test]
+    public void CenteredGuidanceArrowStaysHorizontalAndVerticalTiltIsLimited()
+    {
+        Vector2 centered = TrainingNavigationVisuals.ComputeScreenDirection(Vector3.forward);
+        Vector2 highTarget = TrainingNavigationVisuals.ComputeScreenDirection(new Vector3(0f, 1f, 0.1f));
+
+        Assert.That(Vector2.Dot(centered, Vector2.right), Is.GreaterThan(0.999f));
+        Assert.That(Vector2.Angle(Vector2.right, highTarget), Is.LessThanOrEqualTo(52.01f));
+    }
+
+    [Test]
     public void DistanceAndScoreAreDeterministic()
     {
         Vector3[] route = { Vector3.zero, Vector3.forward };
@@ -92,5 +126,7 @@ public class TrainingEditModeTests
         Assert.That(GameObject.Find("Training Case Loader")?.GetComponent<VrCaseLoader>(), Is.Not.Null);
         Assert.That(GameObject.Find("Desktop Training Controller")?.GetComponent<UreteroscopyTrainingController>(), Is.Not.Null);
         Assert.That(UnityEngine.Object.FindObjectsByType<Camera>().Length, Is.GreaterThanOrEqualTo(2));
+        Assert.That(UreteroscopyTrainingController.ActiveHudWidth, Is.LessThanOrEqualTo(350f));
+        Assert.That(UreteroscopyTrainingController.ActiveMinimapMaximumSize, Is.LessThanOrEqualTo(220f));
     }
 }

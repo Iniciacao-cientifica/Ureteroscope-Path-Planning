@@ -152,6 +152,7 @@ MonoBehaviour:
   endoscopeCamera: {fileID: 1694831823}
   minimapCamera: {fileID: 1259629902}
   difficulty: 0
+  experienceMode: 0
   tipRadiusMeters: 0.002
   millimetersPerEncoderTick: 0.785
   rotationSmoothing: 18
@@ -159,8 +160,12 @@ MonoBehaviour:
   minimumTargetToleranceMillimeters: 8
   targetAngleToleranceDegrees: 15
   targetStableSeconds: 0.5
+  maximumRouteDeviationMillimeters: 15
+  maximumCollisionEvents: 5
+  collisionFlashSeconds: 0.4
   inputMode: 0
   serialPort: AUTO
+  mouseSensitivity: 2
 --- !u!4 &1176446965
 Transform:
   m_ObjectHideFlags: 0
