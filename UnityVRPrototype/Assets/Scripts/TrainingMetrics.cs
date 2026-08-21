@@ -28,22 +28,9 @@ public static class TrainingMetrics
 {
     public static float DistanceToPolyline(Vector3 point, Vector3[] route)
     {
-        ClosestDistanceAlongPolyline(point, route, out float deviation);
-        return deviation;
-    }
-
-    public static float ClosestDistanceAlongPolyline(Vector3 point, Vector3[] route, out float deviation)
-    {
-        deviation = float.PositiveInfinity;
         if (route == null || route.Length == 0) return float.PositiveInfinity;
-        if (route.Length == 1)
-        {
-            deviation = Vector3.Distance(point, route[0]);
-            return 0f;
-        }
+        if (route.Length == 1) return Vector3.Distance(point, route[0]);
         float closestSquared = float.PositiveInfinity;
-        float closestDistanceAlong = 0f;
-        float accumulated = 0f;
         for (int index = 1; index < route.Length; index++)
         {
             Vector3 start = route[index - 1];
@@ -53,21 +40,9 @@ public static class TrainingMetrics
                 ? Mathf.Clamp01(Vector3.Dot(point - start, segment) / denominator)
                 : 0f;
             float squared = (point - (start + segment * amount)).sqrMagnitude;
-            float segmentLength = Mathf.Sqrt(denominator);
-            if (squared < closestSquared)
-            {
-                closestSquared = squared;
-                closestDistanceAlong = accumulated + segmentLength * amount;
-            }
-            accumulated += segmentLength;
+            if (squared < closestSquared) closestSquared = squared;
         }
-        deviation = Mathf.Sqrt(closestSquared);
-        return closestDistanceAlong;
-    }
-
-    public static bool IsWithinRouteCorridor(Vector3 point, Vector3[] route, float radiusMeters)
-    {
-        return DistanceToPolyline(point, route) <= Mathf.Max(0f, radiusMeters);
+        return Mathf.Sqrt(closestSquared);
     }
 
     public static float CalculateScore(TrainingSessionResult result)

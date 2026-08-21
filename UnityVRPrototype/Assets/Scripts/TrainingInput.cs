@@ -86,16 +86,6 @@ public static class TrainingInputMath
     {
         return Quaternion.Inverse(neutral) * current;
     }
-
-    public static float MouseRotationDegrees(float rawDelta, float sensitivity)
-    {
-        return rawDelta * Mathf.Clamp(sensitivity, 0.5f, 4f);
-    }
-
-    public static float KeyboardRotationDegrees(float input, float degreesPerSecond, float deltaTime)
-    {
-        return input * degreesPerSecond * Mathf.Max(0f, deltaTime);
-    }
 }
 
 public interface ITrainingInputSource : IDisposable
@@ -110,7 +100,6 @@ public interface ITrainingInputSource : IDisposable
 public sealed class KeyboardTrainingInput : ITrainingInputSource
 {
     private readonly float ticksPerMillimeter;
-    private readonly float mouseSensitivity;
     private TrainingInputFrame latest;
     private bool hasFrame;
     private float pitch;
@@ -119,10 +108,9 @@ public sealed class KeyboardTrainingInput : ITrainingInputSource
     private float tickAccumulator;
     private long sequence;
 
-    public KeyboardTrainingInput(float millimetersPerTick, float mouseSensitivity = 2f)
+    public KeyboardTrainingInput(float millimetersPerTick)
     {
         ticksPerMillimeter = 1f / Mathf.Max(0.001f, millimetersPerTick);
-        this.mouseSensitivity = Mathf.Clamp(mouseSensitivity, 0.5f, 4f);
     }
 
     public bool IsConnected => true;
@@ -131,13 +119,11 @@ public sealed class KeyboardTrainingInput : ITrainingInputSource
 
     public void Tick()
     {
-        float yawInput = TrainingInputMath.MouseRotationDegrees(Input.GetAxisRaw("Mouse X"), mouseSensitivity) +
-            TrainingInputMath.KeyboardRotationDegrees(Axis(KeyCode.RightArrow, KeyCode.LeftArrow), 70f, Time.deltaTime);
-        float pitchInput = TrainingInputMath.MouseRotationDegrees(-Input.GetAxisRaw("Mouse Y"), mouseSensitivity) +
-            TrainingInputMath.KeyboardRotationDegrees(Axis(KeyCode.DownArrow, KeyCode.UpArrow), 70f, Time.deltaTime);
+        float yawInput = Input.GetAxisRaw("Mouse X") + Axis(KeyCode.RightArrow, KeyCode.LeftArrow);
+        float pitchInput = -Input.GetAxisRaw("Mouse Y") + Axis(KeyCode.DownArrow, KeyCode.UpArrow);
         float rollInput = Axis(KeyCode.E, KeyCode.Q);
-        yaw += yawInput;
-        pitch = Mathf.Clamp(pitch + pitchInput, -80f, 80f);
+        yaw += yawInput * 55f * Time.deltaTime;
+        pitch = Mathf.Clamp(pitch + pitchInput * 55f * Time.deltaTime, -80f, 80f);
         roll += rollInput * 70f * Time.deltaTime;
         float keyboardAdvance = Axis(KeyCode.W, KeyCode.S);
         float mouseAdvance = (Input.GetMouseButton(0) ? 1f : 0f) - (Input.GetMouseButton(1) ? 1f : 0f);

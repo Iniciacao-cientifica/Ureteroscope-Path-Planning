@@ -129,7 +129,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1176446965}
   - component: {fileID: 1176446964}
-  - component: {fileID: 1176446966}
   m_Layer: 0
   m_Name: Desktop Training Controller
   m_TagString: Untagged
@@ -150,11 +149,9 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::UreteroscopyTrainingController
   caseLoader: {fileID: 1830390221}
-  trainingCourse: {fileID: 1176446966}
   endoscopeCamera: {fileID: 1694831823}
   minimapCamera: {fileID: 1259629902}
   difficulty: 0
-  experienceMode: 0
   tipRadiusMeters: 0.002
   millimetersPerEncoderTick: 0.785
   rotationSmoothing: 18
@@ -162,33 +159,8 @@ MonoBehaviour:
   minimumTargetToleranceMillimeters: 8
   targetAngleToleranceDegrees: 15
   targetStableSeconds: 0.5
-  maximumRouteDeviationMillimeters: 15
-  maximumCollisionEvents: 5
-  collisionFlashSeconds: 0.4
   inputMode: 0
   serialPort: AUTO
-  mouseSensitivity: 2
---- !u!114 &1176446966
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1176446963}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5ce1f01783b268443b78045fc59734c8, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::HraTrainingCourse
-  uniformScale: 1
-  routeSampleSpacingMeters: 0.001
-  lumenSides: 24
-  bladderRadiusMeters: 0.024
-  ureterRadiusMeters: 0.004
-  renalPelvisRadiusMeters: 0.01
-  stoneDiameterMeters: 0.006
-  targetKidneyMinimapOpacity: 0.34
-  manualControlPoints: []
 --- !u!4 &1176446965
 Transform:
   m_ObjectHideFlags: 0
@@ -403,7 +375,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1830390220}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 36b3ede24c6db604fae0a85467511ba3, type: 3}
   m_Name:
@@ -422,9 +394,9 @@ MonoBehaviour:
   maximumTabletopSize: 10
   tabletopDistance: 1.05
   tabletopHeight: -0.12
-  routeWidth: 0.004
+  routeWidth: 0.007
   renderSmoothedPathAsTube: 1
-  routeTubeSides: 12
+  routeTubeSides: 8
   pointRadius: 0.018
   followMarkerRadius: 0.014
   meshOpacity: 0.32

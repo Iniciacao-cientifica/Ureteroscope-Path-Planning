@@ -32,10 +32,10 @@ TagManager:
   - 
   - 
   - 
-  - ExternalAnatomy
-  - NavigationGuidance
-  - EndoscopicInterior
-  - MinimapOnly
+  - 
+  - 
+  - 
+  - 
   - 
   m_SortingLayers:
   - name: Default
