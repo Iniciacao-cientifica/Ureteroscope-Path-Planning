@@ -79,7 +79,7 @@ Editor keyboard fallback: `O`, `P`, `F`, `N`, `C`, `R`, `+`, and `-`.
 
 ## Desktop training game
 
-The Unity project also includes a monitor-based academic training mode with an endoscopic camera, minimap, three difficulty levels, wall collisions, score, and anonymous local CSV results. It works with keyboard/mouse or the ESP32-S3 physical probe controller.
+The Unity project also includes a monitor-based academic training mode using a fixed generic HRA urinary system, an editable simplified lumen from the bladder to the right kidney, an endoscopic camera, minimap, three assistance levels, blocking wall collisions, score, and anonymous local CSV results. The desktop game does not load patient-derived anatomy and works with keyboard/mouse or the ESP32-S3 physical probe controller.
 
 Open `Assets/Scenes/UreteroscopyDesktopTraining.unity` or use `Murillo VR > Setup Desktop Training Scene`. Build a Windows executable with `Murillo VR > Build Desktop Training (Windows)`.
 

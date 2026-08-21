@@ -7,7 +7,7 @@ using UnityEngine.Rendering;
 
 public static class VrObjParser
 {
-    public static Mesh Parse(string objText, string meshName)
+    public static Mesh Parse(string objText, string meshName, int minimumConnectedComponentFaces = 0)
     {
         if (string.IsNullOrWhiteSpace(objText))
         {
@@ -50,6 +50,11 @@ public static class VrObjParser
             throw new FormatException("OBJ does not contain vertices and triangle faces.");
         }
 
+        if (minimumConnectedComponentFaces > 1)
+        {
+            RemoveSmallConnectedComponents(vertices, triangles, minimumConnectedComponentFaces);
+        }
+
         Mesh mesh = new Mesh { name = meshName };
         if (vertices.Count > 65535)
         {
@@ -61,6 +66,71 @@ public static class VrObjParser
         mesh.RecalculateBounds();
         mesh.UploadMeshData(false);
         return mesh;
+    }
+
+    private static void RemoveSmallConnectedComponents(List<Vector3> vertices, List<int> triangles, int minimumFaces)
+    {
+        int[] parent = new int[vertices.Count];
+        for (int index = 0; index < parent.Length; index++) parent[index] = index;
+
+        for (int index = 0; index < triangles.Count; index += 3)
+        {
+            Union(parent, triangles[index], triangles[index + 1]);
+            Union(parent, triangles[index], triangles[index + 2]);
+        }
+
+        Dictionary<int, int> faceCounts = new Dictionary<int, int>();
+        for (int index = 0; index < triangles.Count; index += 3)
+        {
+            int root = Find(parent, triangles[index]);
+            faceCounts[root] = faceCounts.TryGetValue(root, out int count) ? count + 1 : 1;
+        }
+
+        List<int> keptTriangles = new List<int>(triangles.Count);
+        Dictionary<int, int> remap = new Dictionary<int, int>();
+        List<Vector3> keptVertices = new List<Vector3>(vertices.Count);
+        for (int index = 0; index < triangles.Count; index += 3)
+        {
+            int root = Find(parent, triangles[index]);
+            if (faceCounts[root] < minimumFaces) continue;
+            for (int corner = 0; corner < 3; corner++)
+            {
+                int oldIndex = triangles[index + corner];
+                if (!remap.TryGetValue(oldIndex, out int newIndex))
+                {
+                    newIndex = keptVertices.Count;
+                    remap.Add(oldIndex, newIndex);
+                    keptVertices.Add(vertices[oldIndex]);
+                }
+                keptTriangles.Add(newIndex);
+            }
+        }
+
+        if (keptTriangles.Count == 0)
+        {
+            throw new FormatException($"OBJ has no connected component with at least {minimumFaces} faces.");
+        }
+        vertices.Clear();
+        vertices.AddRange(keptVertices);
+        triangles.Clear();
+        triangles.AddRange(keptTriangles);
+    }
+
+    private static int Find(int[] parent, int value)
+    {
+        while (parent[value] != value)
+        {
+            parent[value] = parent[parent[value]];
+            value = parent[value];
+        }
+        return value;
+    }
+
+    private static void Union(int[] parent, int left, int right)
+    {
+        int leftRoot = Find(parent, left);
+        int rightRoot = Find(parent, right);
+        if (leftRoot != rightRoot) parent[rightRoot] = leftRoot;
     }
 
     private static float ParseFloat(string value)

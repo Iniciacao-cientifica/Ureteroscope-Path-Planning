@@ -4,9 +4,20 @@ using UnityEngine;
 public sealed class TrainingNavigationVisuals : MonoBehaviour
 {
     public const int GuidanceLayer = 28;
+    public const int MinimapOnlyLayer = 30;
+
+    [Header("External exploration route")]
+    [Min(0.0005f)] public float explorationRouteWidthMeters = 0.001f;
+    [Min(0.0005f)] public float minimapRouteWidthMeters = 0.0015f;
+    [Min(0.0001f)] public float stoneHaloWidthMeters = 0.0004f;
+    [Min(1f)] public float stoneHaloDiameterMultiplier = 1.6f;
+
+    [Header("Internal training route")]
+    [Min(0.0005f)] public float trainingRouteWidthMeters = 0.001f;
+    [Min(0.0005f)] public float trainingMinimapRouteWidthMeters = 0.0015f;
 
     private Camera viewingCamera;
-    private VrCaseLoader caseLoader;
+    private ITrainingCourseView course;
     private Transform probe;
     private Vector3[] routeLocal = Array.Empty<Vector3>();
     private GameObject arrowRoot;
@@ -17,35 +28,337 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
     private Material arrowSideMaterial;
     private Material environmentMaterial;
     private Material gridMaterial;
+    private GameObject explorationRouteRoot;
+    private GameObject minimapRouteRoot;
+    private GameObject stoneHaloRoot;
+    private LineRenderer explorationRouteLine;
+    private LineRenderer minimapRouteLine;
+    private LineRenderer stoneHaloLine;
+    private Material explorationRouteMaterial;
+    private Material minimapRouteMaterial;
+    private Material stoneHaloMaterial;
+    private GameObject trainingRouteRoot;
+    private GameObject trainingMinimapRouteRoot;
+    private LineRenderer trainingRouteLine;
+    private LineRenderer trainingMinimapRouteLine;
+    private Material trainingRouteMaterial;
+    private Material trainingMinimapRouteMaterial;
+    private GameObject fullRouteObject;
+    private Renderer fullRouteRenderer;
+    private int fullRouteOriginalLayer;
+    private float fullRouteOriginalCull;
+    private bool fullRouteHasCull;
+    private bool explorationRouteActive;
+    private bool trainingGuidanceActive;
 
     public Vector2 CurrentScreenDirection { get; private set; } = Vector2.up;
+    public bool AdaptiveRouteActive => explorationRouteActive;
+    public bool NearRouteMode => false;
+    public LineRenderer NearRouteLine => explorationRouteLine;
+    public LineRenderer ExplorationRouteLine => explorationRouteLine;
+    public LineRenderer MinimapRouteLine => minimapRouteLine;
+    public LineRenderer StoneHaloLine => stoneHaloLine;
+    public bool TrainingGuidanceActive => trainingGuidanceActive;
+    public LineRenderer TrainingRouteLine => trainingRouteLine;
+    public LineRenderer TrainingMinimapRouteLine => trainingMinimapRouteLine;
+    public Renderer FullRouteRenderer => fullRouteRenderer;
 
-    public void Configure(Camera camera, VrCaseLoader loader, Transform probeTransform, Vector3[] route)
+    public void Configure(Camera camera, ITrainingCourseView courseView, Transform probeTransform, Vector3[] route)
     {
+        RestoreFullRoutePresentation();
+        DestroyExplorationVisuals();
+        DestroyTrainingVisuals();
         viewingCamera = camera;
-        caseLoader = loader;
+        course = courseView;
         probe = probeTransform;
         routeLocal = route ?? Array.Empty<Vector3>();
         EnsureArrow();
-        BuildEnvironment();
+        if (environmentRoot != null) Destroy(environmentRoot);
+        environmentRoot = null;
         SetPresentation(false, false);
+        SetExternalExplorationActive(false);
+        SetTrainingGuidanceActive(false);
     }
 
     public void SetPresentation(bool showArrow, bool showEnvironment)
     {
         if (arrowRoot != null) arrowRoot.SetActive(showArrow);
-        if (environmentRoot != null) environmentRoot.SetActive(showEnvironment);
+        if (environmentRoot != null) environmentRoot.SetActive(false);
+    }
+
+    public void SetExternalExplorationActive(bool active)
+    {
+        bool shouldActivate = active && course != null && course.SmoothedPathObject != null && routeLocal.Length > 1;
+        if (!shouldActivate)
+        {
+            explorationRouteActive = false;
+            DestroyExplorationVisuals();
+            UpdateFullRouteVisibility();
+            return;
+        }
+
+        if (explorationRouteRoot == null) BuildExplorationVisuals();
+        explorationRouteActive = explorationRouteRoot != null;
+        if (!explorationRouteActive) return;
+        CaptureFullRoutePresentation();
+        UpdateFullRouteVisibility();
+        explorationRouteRoot.SetActive(true);
+        if (minimapRouteRoot != null) minimapRouteRoot.SetActive(true);
+        if (stoneHaloRoot != null) stoneHaloRoot.SetActive(true);
+        UpdateStoneHalo();
+    }
+
+    public void SetTrainingGuidanceActive(bool active)
+    {
+        bool shouldActivate = active && course != null && course.SmoothedPathObject != null && routeLocal.Length > 1;
+        if (!shouldActivate)
+        {
+            trainingGuidanceActive = false;
+            DestroyTrainingVisuals();
+            UpdateFullRouteVisibility();
+            return;
+        }
+
+        if (trainingRouteRoot == null) BuildTrainingVisuals();
+        trainingGuidanceActive = trainingRouteRoot != null;
+        if (!trainingGuidanceActive) return;
+        CaptureFullRoutePresentation();
+        trainingRouteRoot.SetActive(true);
+        if (trainingMinimapRouteRoot != null) trainingMinimapRouteRoot.SetActive(true);
+        UpdateFullRouteVisibility();
+    }
+
+    public void SetAdaptiveRouteActive(bool active)
+    {
+        SetExternalExplorationActive(active);
+    }
+
+    public void TickAdaptiveRoute(float distanceFromRouteMillimeters)
+    {
+        if (explorationRouteActive) UpdateStoneHalo();
+    }
+
+    private void BuildExplorationVisuals()
+    {
+        if (course?.ContentRoot == null || routeLocal.Length < 2) return;
+
+        Shader routeShader = Shader.Find("Murillo/Training Route Opaque");
+        if (routeShader == null) routeShader = Shader.Find("Sprites/Default");
+        explorationRouteMaterial = new Material(routeShader)
+        {
+            name = "External Exploration Route Material",
+            color = new Color(0.04f, 0.32f, 1f, 1f),
+            renderQueue = 4997
+        };
+        SetDepthTest(explorationRouteMaterial, UnityEngine.Rendering.CompareFunction.Always);
+
+        explorationRouteRoot = new GameObject("External Exploration Route");
+        explorationRouteRoot.layer = GuidanceLayer;
+        explorationRouteRoot.transform.SetParent(course.ContentRoot, false);
+        explorationRouteLine = CreateRouteLine("Thin Blue Full Route", explorationRouteRoot.transform, GuidanceLayer,
+            explorationRouteWidthMeters, explorationRouteMaterial);
+        explorationRouteLine.positionCount = routeLocal.Length;
+        explorationRouteLine.SetPositions(routeLocal);
+
+        Color minimapColor = course.RouteColor;
+        minimapColor.a = 1f;
+        minimapRouteMaterial = new Material(routeShader)
+        {
+            name = "External Route Minimap Material",
+            color = minimapColor,
+            renderQueue = 4997
+        };
+        SetDepthTest(minimapRouteMaterial, UnityEngine.Rendering.CompareFunction.Always);
+        minimapRouteRoot = new GameObject("External Route Minimap");
+        minimapRouteRoot.layer = MinimapOnlyLayer;
+        minimapRouteRoot.transform.SetParent(course.ContentRoot, false);
+        minimapRouteLine = CreateRouteLine("Full Route Minimap", minimapRouteRoot.transform, MinimapOnlyLayer,
+            minimapRouteWidthMeters, minimapRouteMaterial);
+        minimapRouteLine.positionCount = routeLocal.Length;
+        minimapRouteLine.SetPositions(routeLocal);
+
+        Shader sprite = Shader.Find("Sprites/Default");
+        Shader haloShader = Shader.Find("Murillo/Training Overlay Unlit");
+        if (haloShader == null) haloShader = sprite;
+        stoneHaloMaterial = CreateOverlayMaterial(haloShader, new Color(1f, 0.48f, 0.06f, 0.86f), 4998);
+        stoneHaloRoot = new GameObject("Target Stone Halo");
+        stoneHaloRoot.layer = GuidanceLayer;
+        stoneHaloLine = CreateRouteLine("Amber Stone Halo Ring", stoneHaloRoot.transform, GuidanceLayer,
+            stoneHaloWidthMeters, stoneHaloMaterial);
+        stoneHaloLine.useWorldSpace = true;
+        stoneHaloLine.loop = true;
+
+        SetLayerRecursively(explorationRouteRoot.transform, GuidanceLayer);
+        SetLayerRecursively(minimapRouteRoot.transform, MinimapOnlyLayer);
+        SetLayerRecursively(stoneHaloRoot.transform, GuidanceLayer);
+    }
+
+    private void BuildTrainingVisuals()
+    {
+        if (course?.ContentRoot == null || routeLocal.Length < 2) return;
+
+        Shader routeShader = Shader.Find("Murillo/Training Route Opaque");
+        if (routeShader == null) routeShader = Shader.Find("Sprites/Default");
+        trainingRouteMaterial = new Material(routeShader)
+        {
+            name = "Internal Training Route Material",
+            color = new Color(0.035f, 0.24f, 0.95f, 1f),
+            renderQueue = 2450
+        };
+        SetDepthTest(trainingRouteMaterial, UnityEngine.Rendering.CompareFunction.LessEqual);
+
+        trainingRouteRoot = new GameObject("Internal Training Guidance Route");
+        trainingRouteRoot.layer = GuidanceLayer;
+        trainingRouteRoot.transform.SetParent(course.ContentRoot, false);
+        trainingRouteLine = CreateRouteLine("Internal Thin Blue Route", trainingRouteRoot.transform, GuidanceLayer,
+            trainingRouteWidthMeters, trainingRouteMaterial);
+        trainingRouteLine.positionCount = routeLocal.Length;
+        trainingRouteLine.SetPositions(routeLocal);
+
+        Color minimapColor = course.RouteColor;
+        minimapColor.a = 1f;
+        trainingMinimapRouteMaterial = new Material(routeShader)
+        {
+            name = "Training Route Minimap Material",
+            color = minimapColor,
+            renderQueue = 4997
+        };
+        SetDepthTest(trainingMinimapRouteMaterial, UnityEngine.Rendering.CompareFunction.Always);
+        trainingMinimapRouteRoot = new GameObject("Training Route Minimap");
+        trainingMinimapRouteRoot.layer = MinimapOnlyLayer;
+        trainingMinimapRouteRoot.transform.SetParent(course.ContentRoot, false);
+        trainingMinimapRouteLine = CreateRouteLine("Full Training Route Minimap", trainingMinimapRouteRoot.transform,
+            MinimapOnlyLayer, trainingMinimapRouteWidthMeters, trainingMinimapRouteMaterial);
+        trainingMinimapRouteLine.positionCount = routeLocal.Length;
+        trainingMinimapRouteLine.SetPositions(routeLocal);
+
+        SetLayerRecursively(trainingRouteRoot.transform, GuidanceLayer);
+        SetLayerRecursively(trainingMinimapRouteRoot.transform, MinimapOnlyLayer);
+    }
+
+    private static void SetDepthTest(Material material, UnityEngine.Rendering.CompareFunction comparison)
+    {
+        if (material != null && material.HasProperty("_ZTest")) material.SetFloat("_ZTest", (float)comparison);
+    }
+
+    private static LineRenderer CreateRouteLine(string objectName, Transform parent, int layer, float width, Material material)
+    {
+        GameObject lineObject = new GameObject(objectName);
+        lineObject.layer = layer;
+        lineObject.transform.SetParent(parent, false);
+        LineRenderer line = lineObject.AddComponent<LineRenderer>();
+        line.useWorldSpace = false;
+        line.alignment = LineAlignment.View;
+        line.textureMode = LineTextureMode.Stretch;
+        line.numCapVertices = 4;
+        line.numCornerVertices = 4;
+        line.startWidth = width;
+        line.endWidth = width;
+        line.sharedMaterial = material;
+        line.startColor = Color.white;
+        line.endColor = Color.white;
+        return line;
+    }
+
+    private void UpdateStoneHalo()
+    {
+        if (!explorationRouteActive || stoneHaloLine == null || viewingCamera == null || course?.CurrentTargetObject == null) return;
+        const int samples = 48;
+        float radius = course.CurrentStoneDiameterMeters * stoneHaloDiameterMultiplier * 0.5f;
+        Vector3 center = course.CurrentTargetObject.transform.position;
+        Vector3 right = viewingCamera.transform.right;
+        Vector3 up = viewingCamera.transform.up;
+        stoneHaloLine.positionCount = samples;
+        for (int index = 0; index < samples; index++)
+        {
+            float angle = index / (float)samples * Mathf.PI * 2f;
+            stoneHaloLine.SetPosition(index, center + right * (Mathf.Cos(angle) * radius) + up * (Mathf.Sin(angle) * radius));
+        }
+    }
+
+    private void CaptureFullRoutePresentation()
+    {
+        if (fullRouteObject != null || course?.SmoothedPathObject == null) return;
+        fullRouteObject = course.SmoothedPathObject;
+        fullRouteOriginalLayer = fullRouteObject.layer;
+        fullRouteRenderer = fullRouteObject.GetComponent<Renderer>();
+        Material material = fullRouteRenderer != null ? fullRouteRenderer.sharedMaterial : null;
+        fullRouteHasCull = material != null && material.HasProperty("_Cull");
+        if (fullRouteHasCull) fullRouteOriginalCull = material.GetFloat("_Cull");
+    }
+
+    private void UpdateFullRouteVisibility()
+    {
+        if (explorationRouteActive || trainingGuidanceActive)
+        {
+            CaptureFullRoutePresentation();
+            if (fullRouteRenderer != null) fullRouteRenderer.enabled = false;
+            return;
+        }
+        RestoreFullRoutePresentation();
+    }
+
+    private void RestoreFullRoutePresentation()
+    {
+        if (fullRouteRenderer != null)
+        {
+            fullRouteRenderer.enabled = true;
+            Material material = fullRouteRenderer.sharedMaterial;
+            if (fullRouteHasCull && material != null && material.HasProperty("_Cull"))
+            {
+                material.SetFloat("_Cull", fullRouteOriginalCull);
+            }
+        }
+        if (fullRouteObject != null) SetLayerRecursively(fullRouteObject.transform, fullRouteOriginalLayer);
+        fullRouteObject = null;
+        fullRouteRenderer = null;
+        fullRouteHasCull = false;
+    }
+
+    private void DestroyExplorationVisuals()
+    {
+        if (explorationRouteRoot != null) Destroy(explorationRouteRoot);
+        if (minimapRouteRoot != null) Destroy(minimapRouteRoot);
+        if (stoneHaloRoot != null) Destroy(stoneHaloRoot);
+        if (explorationRouteMaterial != null) Destroy(explorationRouteMaterial);
+        if (minimapRouteMaterial != null) Destroy(minimapRouteMaterial);
+        if (stoneHaloMaterial != null) Destroy(stoneHaloMaterial);
+        explorationRouteRoot = null;
+        minimapRouteRoot = null;
+        stoneHaloRoot = null;
+        explorationRouteLine = null;
+        minimapRouteLine = null;
+        stoneHaloLine = null;
+        explorationRouteMaterial = null;
+        minimapRouteMaterial = null;
+        stoneHaloMaterial = null;
+        explorationRouteActive = false;
+    }
+
+    private void DestroyTrainingVisuals()
+    {
+        if (trainingRouteRoot != null) Destroy(trainingRouteRoot);
+        if (trainingMinimapRouteRoot != null) Destroy(trainingMinimapRouteRoot);
+        if (trainingRouteMaterial != null) Destroy(trainingRouteMaterial);
+        if (trainingMinimapRouteMaterial != null) Destroy(trainingMinimapRouteMaterial);
+        trainingRouteRoot = null;
+        trainingMinimapRouteRoot = null;
+        trainingRouteLine = null;
+        trainingMinimapRouteLine = null;
+        trainingRouteMaterial = null;
+        trainingMinimapRouteMaterial = null;
+        trainingGuidanceActive = false;
     }
 
     public void TickArrow(float lookAheadMeters = 0.02f)
     {
-        if (arrowRoot == null || !arrowRoot.activeSelf || probe == null || caseLoader == null || routeLocal.Length < 2) return;
+        if (arrowRoot == null || !arrowRoot.activeSelf || probe == null || course == null || routeLocal.Length < 2) return;
         float distanceAlong = TrainingMetrics.ClosestDistanceAlongPolyline(probe.localPosition, routeLocal, out _);
-        Vector3 targetLocal = caseLoader.SampleCurrentRouteLocal(Mathf.Min(
-            caseLoader.CurrentRouteLengthMeters,
+        Vector3 targetLocal = course.SampleRouteLocal(Mathf.Min(
+            course.RouteLengthMeters,
             distanceAlong + Mathf.Max(0.005f, lookAheadMeters)
         ));
-        Vector3 targetWorld = caseLoader.ContentRoot.TransformPoint(targetLocal);
+        Vector3 targetWorld = course.ContentRoot.TransformPoint(targetLocal);
         Vector3 direction = targetWorld - probe.position;
         if (direction.sqrMagnitude < 0.0000001f) direction = probe.forward;
         Vector3 cameraDirection = viewingCamera.transform.InverseTransformDirection(direction.normalized);
@@ -165,7 +478,7 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
 
     private Bounds CalculateCaseBounds()
     {
-        Renderer[] renderers = caseLoader?.ContentRoot?.GetComponentsInChildren<Renderer>(true) ?? Array.Empty<Renderer>();
+        Renderer[] renderers = course?.ContentRoot?.GetComponentsInChildren<Renderer>(true) ?? Array.Empty<Renderer>();
         if (renderers.Length == 0) return new Bounds(Vector3.zero, Vector3.one * 0.5f);
         Bounds bounds = renderers[0].bounds;
         for (int index = 1; index < renderers.Length; index++) bounds.Encapsulate(renderers[index].bounds);
@@ -321,5 +634,12 @@ public sealed class TrainingNavigationVisuals : MonoBehaviour
     {
         root.gameObject.layer = layer;
         foreach (Transform child in root) SetLayerRecursively(child, layer);
+    }
+
+    private void OnDestroy()
+    {
+        RestoreFullRoutePresentation();
+        DestroyExplorationVisuals();
+        DestroyTrainingVisuals();
     }
 }

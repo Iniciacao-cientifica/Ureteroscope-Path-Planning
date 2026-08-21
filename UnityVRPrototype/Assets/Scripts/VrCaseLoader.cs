@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 using UnityEngine.XR;
 using Unity.XR.CoreUtils;
 
-public class VrCaseLoader : MonoBehaviour
+public class VrCaseLoader : MonoBehaviour, ITrainingCourseView
 {
     public event Action CaseReady;
     public event Action RouteChanged;
@@ -38,6 +38,7 @@ public class VrCaseLoader : MonoBehaviour
     public float pointRadius = 0.018f;
     public float followMarkerRadius = 0.014f;
     [Range(0.05f, 1f)] public float meshOpacity = 0.32f;
+    [Min(0)] public int minimumAnatomyComponentFaces = 500;
     public Color anatomyColor = new Color(0.92f, 0.2f, 0.12f, 0.32f);
     public Color stoneColor = new Color(1f, 0.7f, 0.08f, 1f);
     public Color originalPathColor = new Color(0.1f, 0.9f, 0.25f, 1f);
@@ -67,6 +68,12 @@ public class VrCaseLoader : MonoBehaviour
     public Transform ContentRoot => contentRoot;
     public Transform RouteRoot => routeRoot;
     public GameObject AnatomyObject => anatomyObject;
+    public GameObject SmoothedPathObject => smoothedPathObject;
+    public GameObject StartMarkerObject => startMarkerObject;
+    public GameObject CurrentTargetObject => targetObject;
+    public float CurrentStoneDiameterMeters => Mathf.Max(0.006f, GetCurrentStoneRadiusMeters() * 2f);
+    public Color RouteColor => smoothedPathColor;
+    float ITrainingCourseView.RouteLengthMeters => CurrentRouteLengthMeters;
     public VrCaseManifest CurrentManifest => manifest;
     public VrRouteData CurrentRoute => routeData;
     public float CurrentRouteLengthMeters => visualRouteLength;
@@ -81,7 +88,10 @@ public class VrCaseLoader : MonoBehaviour
     private GameObject stoneObject;
     private GameObject originalPathObject;
     private GameObject smoothedPathObject;
+    private GameObject startMarkerObject;
+    private GameObject targetObject;
     private GameObject followMarkerObject;
+    private Mesh targetStoneMesh;
     private TextMesh informationText;
     private Material anatomyMaterial;
     private Vector3[] visualRoutePositions = Array.Empty<Vector3>();
@@ -243,7 +253,6 @@ public class VrCaseLoader : MonoBehaviour
             {
                 stoneObject = BuildObjectFromObj("Segmented Stones", stonesText, stoneColor, false);
             }
-            BuildStoneMarkers();
             currentRouteIndex = 0;
             SelectRoute(0);
             if (frameCaseOnLoad) FrameCaseInFrontOfViewer();
@@ -337,7 +346,8 @@ public class VrCaseLoader : MonoBehaviour
 
     private GameObject BuildObjectFromObj(string objectName, string objText, Color color, bool transparent)
     {
-        Mesh mesh = VrObjParser.Parse(objText, objectName + " Mesh");
+        int componentThreshold = transparent ? minimumAnatomyComponentFaces : 0;
+        Mesh mesh = VrObjParser.Parse(objText, objectName + " Mesh", componentThreshold);
         GameObject result = new GameObject(objectName);
         result.transform.SetParent(contentRoot, false);
         MeshFilter filter = result.AddComponent<MeshFilter>();
@@ -365,24 +375,6 @@ public class VrCaseLoader : MonoBehaviour
         }
     }
 
-    private void BuildStoneMarkers()
-    {
-        if (manifest?.stones == null)
-        {
-            return;
-        }
-        foreach (VrStoneData stone in manifest.stones)
-        {
-            if (stone?.centroid == null)
-            {
-                continue;
-            }
-            float radius = Mathf.Max(pointRadius * 0.65f, stone.equivalent_diameter_mm / 2000f);
-            GameObject marker = BuildPoint($"{stone.stone_id} marker", stone.centroid, targetColor, radius, contentRoot);
-            marker.SetActive(stonesVisible);
-        }
-    }
-
     private void SelectLegacyRoute(VrRouteData value)
     {
         routesDocument = null;
@@ -406,6 +398,11 @@ public class VrCaseLoader : MonoBehaviour
 
     private void BuildSelectedRoute()
     {
+        if (targetStoneMesh != null)
+        {
+            Destroy(targetStoneMesh);
+            targetStoneMesh = null;
+        }
         if (routeRoot != null)
         {
             Destroy(routeRoot.gameObject);
@@ -416,19 +413,39 @@ public class VrCaseLoader : MonoBehaviour
         BuildVisualRouteCache();
         originalPathObject = BuildLine("A* Original Path", routeData.path_original, originalPathColor, routeWidth * 0.7f);
         smoothedPathObject = renderSmoothedPathAsTube
-            ? BuildTube("Smoothed Route", visualRoutePositions, smoothedPathColor, routeWidth)
+            ? BuildTube("Smoothed Route", visualRoutePositions, smoothedPathColor, routeWidth * 0.5f)
             : BuildLine("Smoothed Route", GetVisualRoutePoints(), smoothedPathColor, routeWidth);
         if (originalPathObject != null)
         {
             originalPathObject.SetActive(false);
         }
-        BuildPoint("Start", routeData.start, startColor, pointRadius, routeRoot);
-        BuildPoint("Target", routeData.target, targetColor, pointRadius * 1.35f, routeRoot);
+        startMarkerObject = BuildPoint("Start", routeData.start, startColor, pointRadius, routeRoot);
+        targetObject = BuildTargetStone();
         followMarkerObject = BuildPoint("Route Marker", routeData.start, new Color(0.1f, 0.85f, 1f, 1f), followMarkerRadius, routeRoot);
         followMarkerObject.SetActive(false);
         routeRoot.gameObject.SetActive(routeVisible);
         followingRoute = false;
         followTimer = 0f;
+    }
+
+    private GameObject BuildTargetStone()
+    {
+        GameObject stone = new GameObject("Target Kidney Stone");
+        stone.transform.SetParent(routeRoot, false);
+        stone.transform.localPosition = MapPoint(routeData.target);
+        targetStoneMesh = VrStoneMeshBuilder.Build(CurrentStoneDiameterMeters, routeData.stone_id);
+        stone.AddComponent<MeshFilter>().sharedMesh = targetStoneMesh;
+        MeshRenderer renderer = stone.AddComponent<MeshRenderer>();
+        Color naturalStone = new Color(0.55f, 0.29f, 0.10f, 1f);
+        Material material = BuildMaterial(naturalStone, false, true);
+        if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0f);
+        if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.12f);
+        if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.12f);
+        renderer.sharedMaterial = material;
+        renderer.shadowCastingMode = ShadowCastingMode.On;
+        renderer.receiveShadows = true;
+        stone.SetActive(stonesVisible);
+        return stone;
     }
 
     private void BuildVisualRouteCache()
@@ -486,63 +503,14 @@ public class VrCaseLoader : MonoBehaviour
         {
             return null;
         }
-        int sides = Mathf.Max(6, routeTubeSides);
-        Vector3[] vertices = new Vector3[positions.Length * sides];
-        int[] triangles = new int[(positions.Length - 1) * sides * 6];
-        for (int index = 0; index < positions.Length; index++)
-        {
-            Vector3 tangent = index == 0
-                ? positions[1] - positions[0]
-                : index == positions.Length - 1
-                    ? positions[index] - positions[index - 1]
-                    : positions[index + 1] - positions[index - 1];
-            tangent = tangent.sqrMagnitude > 0.000001f ? tangent.normalized : Vector3.forward;
-            Vector3 side = Vector3.Cross(tangent, Vector3.up);
-            if (side.sqrMagnitude < 0.000001f)
-            {
-                side = Vector3.Cross(tangent, Vector3.right);
-            }
-            side.Normalize();
-            Vector3 normal = Vector3.Cross(side, tangent).normalized;
-            for (int sideIndex = 0; sideIndex < sides; sideIndex++)
-            {
-                float angle = 2f * Mathf.PI * sideIndex / sides;
-                vertices[index * sides + sideIndex] = positions[index] +
-                    (Mathf.Cos(angle) * normal + Mathf.Sin(angle) * side) * radius;
-            }
-        }
-        int triangleIndex = 0;
-        for (int index = 0; index < positions.Length - 1; index++)
-        {
-            for (int sideIndex = 0; sideIndex < sides; sideIndex++)
-            {
-                int nextSide = (sideIndex + 1) % sides;
-                int current = index * sides + sideIndex;
-                int currentNext = index * sides + nextSide;
-                int following = (index + 1) * sides + sideIndex;
-                int followingNext = (index + 1) * sides + nextSide;
-                triangles[triangleIndex++] = current;
-                triangles[triangleIndex++] = following;
-                triangles[triangleIndex++] = currentNext;
-                triangles[triangleIndex++] = currentNext;
-                triangles[triangleIndex++] = following;
-                triangles[triangleIndex++] = followingNext;
-            }
-        }
-        Mesh mesh = new Mesh { name = tubeName };
-        if (vertices.Length > 65535)
-        {
-            mesh.indexFormat = IndexFormat.UInt32;
-        }
-        mesh.vertices = vertices;
-        mesh.triangles = triangles;
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
+        Mesh mesh = VrTubeMeshBuilder.Build(positions, radius, routeTubeSides, tubeName);
         GameObject tubeObject = new GameObject(tubeName);
         tubeObject.transform.SetParent(routeRoot, false);
         tubeObject.AddComponent<MeshFilter>().sharedMesh = mesh;
         MeshRenderer renderer = tubeObject.AddComponent<MeshRenderer>();
-        renderer.sharedMaterial = BuildMaterial(color, false, true);
+        Material routeMaterial = BuildMaterial(new Color(color.r, color.g, color.b, 1f), false, true);
+        ConfigureOpaqueMaterial(routeMaterial);
+        renderer.sharedMaterial = routeMaterial;
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         return tubeObject;
@@ -635,6 +603,8 @@ public class VrCaseLoader : MonoBehaviour
     {
         return SampleRoute(Mathf.Clamp(distanceMeters, 0f, visualRouteLength));
     }
+
+    Vector3 ITrainingCourseView.SampleRouteLocal(float distanceMeters) => SampleCurrentRouteLocal(distanceMeters);
 
     public Vector3 GetCurrentStartLocal()
     {
@@ -755,6 +725,7 @@ public class VrCaseLoader : MonoBehaviour
     {
         stonesVisible = !stonesVisible;
         if (stoneObject != null) stoneObject.SetActive(stonesVisible);
+        if (targetObject != null) targetObject.SetActive(stonesVisible);
         if (contentRoot != null)
         {
             foreach (Transform child in contentRoot)
@@ -901,6 +872,13 @@ public class VrCaseLoader : MonoBehaviour
         }
         anatomyObject = null;
         stoneObject = null;
+        startMarkerObject = null;
+        targetObject = null;
+        if (targetStoneMesh != null)
+        {
+            Destroy(targetStoneMesh);
+            targetStoneMesh = null;
+        }
         routeRoot = null;
         routeData = null;
         anatomyMaterial = null;
@@ -1029,6 +1007,21 @@ public class VrCaseLoader : MonoBehaviour
         if (material.HasProperty("_Mode")) material.SetFloat("_Mode", 3f);
         material.EnableKeyword("_ALPHABLEND_ON");
         material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.DisableKeyword("_ALPHATEST_ON");
+    }
+
+    private static void ConfigureOpaqueMaterial(Material material)
+    {
+        material.SetOverrideTag("RenderType", "Opaque");
+        material.renderQueue = (int)RenderQueue.Geometry;
+        if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 0f);
+        if (material.HasProperty("_SrcBlend")) material.SetFloat("_SrcBlend", (float)BlendMode.One);
+        if (material.HasProperty("_DstBlend")) material.SetFloat("_DstBlend", (float)BlendMode.Zero);
+        if (material.HasProperty("_ZWrite")) material.SetFloat("_ZWrite", 1f);
+        if (material.HasProperty("_Mode")) material.SetFloat("_Mode", 0f);
+        material.DisableKeyword("_ALPHABLEND_ON");
+        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
         material.DisableKeyword("_ALPHATEST_ON");
     }
 

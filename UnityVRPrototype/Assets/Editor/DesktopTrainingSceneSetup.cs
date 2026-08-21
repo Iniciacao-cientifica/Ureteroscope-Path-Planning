@@ -36,6 +36,9 @@ public static class DesktopTrainingSceneSetup
         loader.enableKeyboardShortcuts = false;
         loader.enableQuestControllerInput = false;
         loader.maximumTabletopSize = 10f;
+        loader.routeWidth = 0.004f;
+        loader.routeTubeSides = 12;
+        loader.enabled = false;
 
         GameObject cameraObject = new GameObject("Endoscopic Camera");
         cameraObject.tag = "MainCamera";
@@ -48,7 +51,9 @@ public static class DesktopTrainingSceneSetup
 
         GameObject controllerObject = new GameObject("Desktop Training Controller");
         UreteroscopyTrainingController controller = controllerObject.AddComponent<UreteroscopyTrainingController>();
+        HraTrainingCourse genericCourse = controllerObject.AddComponent<HraTrainingCourse>();
         controller.caseLoader = loader;
+        controller.trainingCourse = genericCourse;
         controller.endoscopeCamera = camera;
         controller.minimapCamera = minimap;
         controller.difficulty = TrainingDifficulty.Tutorial;
@@ -134,7 +139,10 @@ public static class DesktopTrainingSceneSetup
         if (settings == null) throw new InvalidOperationException("Could not load GraphicsSettings.asset.");
         SerializedObject serialized = new SerializedObject(settings);
         SerializedProperty included = serialized.FindProperty("m_AlwaysIncludedShaders");
-        string[] shaderNames = { "Standard", "Sprites/Default", "Murillo/Training Overlay Unlit" };
+        string[] shaderNames =
+        {
+            "Standard", "Sprites/Default", "Murillo/Training Overlay Unlit", "Murillo/Training Route Opaque"
+        };
         foreach (string shaderName in shaderNames)
         {
             Shader shader = Shader.Find(shaderName);

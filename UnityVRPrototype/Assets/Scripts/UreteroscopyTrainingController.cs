@@ -42,6 +42,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     [Header("Case and cameras")]
     public VrCaseLoader caseLoader;
+    public HraTrainingCourse trainingCourse;
     public Camera endoscopeCamera;
     public Camera minimapCamera;
     public TrainingDifficulty difficulty = TrainingDifficulty.Tutorial;
@@ -59,7 +60,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
     [Header("Training safety")]
     public float maximumRouteDeviationMillimeters = 15f;
     public int maximumCollisionEvents = 5;
-    public float collisionFlashSeconds = 0.4f;
+    public float collisionFlashSeconds = 0.5f;
 
     [Header("Input")]
     public TrainingInputMode inputMode = TrainingInputMode.Keyboard;
@@ -69,13 +70,18 @@ public class UreteroscopyTrainingController : MonoBehaviour
     public TrainingSessionState State { get; private set; } = TrainingSessionState.LoadingCase;
     public float ElapsedSeconds => elapsedSeconds;
     public int CollisionEvents => collisionEvents;
+    public int RemainingCollisionEvents => Mathf.Max(0, Mathf.Max(1, maximumCollisionEvents) - collisionEvents);
     public float CurrentDeviationMillimeters => currentDeviationMeters * 1000f;
 
     private ITrainingInputSource inputSource;
     private Transform probe;
     private GameObject interiorVisualRoot;
+    private bool ownsInteriorVisualRoot;
     private RenderTexture minimapTexture;
     private TrainingNavigationVisuals navigationVisuals;
+    private KidneyVisualPresenter kidneyVisualPresenter;
+    private ExternalExplorationCameraController externalCameraController;
+    private GameObject externalProbeVisual;
     private Vector3[] routePositions = Array.Empty<Vector3>();
     private Quaternion neutralOrientation = Quaternion.identity;
     private Quaternion initialProbeRotation = Quaternion.identity;
@@ -119,14 +125,24 @@ public class UreteroscopyTrainingController : MonoBehaviour
         millimetersPerEncoderTick = PlayerPrefs.GetFloat(EncoderScalePreference, millimetersPerEncoderTick);
         mouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(MouseSensitivityPreference, mouseSensitivity), 0.5f, 4f);
         if (caseLoader == null) caseLoader = FindAnyObjectByType<VrCaseLoader>();
+        if (trainingCourse == null) trainingCourse = FindAnyObjectByType<HraTrainingCourse>();
+        if (trainingCourse == null) trainingCourse = gameObject.AddComponent<HraTrainingCourse>();
+        trainingCourse.EnsureReady();
+        if (trainingCourse.IsReady && caseLoader != null) caseLoader.enabled = false;
         navigationVisuals = GetComponent<TrainingNavigationVisuals>();
         if (navigationVisuals == null) navigationVisuals = gameObject.AddComponent<TrainingNavigationVisuals>();
+        kidneyVisualPresenter = GetComponent<KidneyVisualPresenter>();
+        if (kidneyVisualPresenter == null) kidneyVisualPresenter = gameObject.AddComponent<KidneyVisualPresenter>();
+        externalCameraController = GetComponent<ExternalExplorationCameraController>();
+        if (externalCameraController == null) externalCameraController = gameObject.AddComponent<ExternalExplorationCameraController>();
+        externalCameraController.NavigationModeChanged += HandleExplorationNavigationModeChanged;
         EnsureCameras();
     }
 
     private void OnEnable()
     {
-        if (caseLoader != null)
+        if (trainingCourse != null) trainingCourse.CourseReady += HandleTrainingCourseReady;
+        if ((trainingCourse == null || !trainingCourse.IsReady) && caseLoader != null)
         {
             caseLoader.CaseReady += HandleCaseReady;
             caseLoader.RouteChanged += HandleRouteChanged;
@@ -135,7 +151,8 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void Start()
     {
-        if (caseLoader != null && caseLoader.IsReady) HandleCaseReady();
+        if (trainingCourse != null && trainingCourse.IsReady) HandleTrainingCourseReady();
+        else if (caseLoader != null && caseLoader.IsReady) HandleCaseReady();
     }
 
     private void Update()
@@ -173,7 +190,17 @@ public class UreteroscopyTrainingController : MonoBehaviour
                 }
                 return;
             }
-            if (receivedFrame) ProcessFrame(latestFrame);
+            bool freeCamera = experienceMode == TrainingExperienceMode.Exploration &&
+                              externalCameraController != null &&
+                              externalCameraController.Mode == ExplorationNavigationMode.FreeCamera;
+            if (receivedFrame && freeCamera)
+            {
+                // Keep consuming both keyboard and USB input, but do not apply it to
+                // the instrument while the spectator camera is being controlled.
+                lastEncoderTicks = latestFrame.encoderTicks;
+                previousAction = latestFrame.actionPressed;
+            }
+            else if (receivedFrame) ProcessFrame(latestFrame);
             if (experienceMode == TrainingExperienceMode.Training && State == TrainingSessionState.Running)
             {
                 elapsedSeconds += Time.deltaTime;
@@ -190,17 +217,54 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (State == TrainingSessionState.Running) navigationVisuals?.TickArrow();
+        if (State != TrainingSessionState.Running) return;
+        if (experienceMode == TrainingExperienceMode.Training) navigationVisuals?.TickArrow();
+        if (experienceMode == TrainingExperienceMode.Exploration)
+        {
+            if (!UsesGenericCourse) kidneyVisualPresenter?.Tick(CurrentDeviationMillimeters);
+            navigationVisuals?.TickAdaptiveRoute(CurrentDeviationMillimeters);
+        }
+    }
+
+    private void HandleExplorationNavigationModeChanged(ExplorationNavigationMode mode)
+    {
+        if (experienceMode != TrainingExperienceMode.Exploration || probe == null) return;
+        if (mode == ExplorationNavigationMode.ProbeFollow)
+        {
+            initialProbeRotation = probe.localRotation;
+            if (hasLatestFrame)
+            {
+                neutralOrientation = latestFrame.orientation;
+                lastEncoderTicks = latestFrame.encoderTicks;
+                previousAction = latestFrame.actionPressed;
+            }
+            feedbackMessage = "INSTRUMENTO • Tab retorna à câmera livre";
+        }
+        else
+        {
+            if (hasLatestFrame) lastEncoderTicks = latestFrame.encoderTicks;
+            feedbackMessage = "CÂMERA LIVRE • Tab controla o instrumento • F reenquadra";
+        }
+        feedbackUntil = Time.unscaledTime + 2f;
     }
 
     private void HandleCaseReady()
     {
+        if (trainingCourse != null && trainingCourse.IsReady) return;
+        PrepareLoadedCase();
+        State = TrainingSessionState.Ready;
+    }
+
+    private void HandleTrainingCourseReady()
+    {
+        if (caseLoader != null) caseLoader.enabled = false;
         PrepareLoadedCase();
         State = TrainingSessionState.Ready;
     }
 
     private void HandleRouteChanged()
     {
+        if (trainingCourse != null && trainingCourse.IsReady) return;
         if (caseLoader != null && caseLoader.IsReady)
         {
             StopInput();
@@ -209,23 +273,63 @@ public class UreteroscopyTrainingController : MonoBehaviour
         }
     }
 
+    private bool UsesGenericCourse => trainingCourse != null && trainingCourse.IsReady;
+    private ITrainingCourseView ActiveCourseView => UsesGenericCourse ? trainingCourse : caseLoader;
+    private Transform ActiveContentRoot => ActiveCourseView?.ContentRoot;
+    private Vector3 ActiveStartLocal => UsesGenericCourse ? trainingCourse.StartLocal : caseLoader.GetCurrentStartLocal();
+    private Vector3 ActiveTargetLocal => UsesGenericCourse ? trainingCourse.TargetLocal : caseLoader.GetCurrentTargetLocal();
+    private float ActiveStoneRadiusMeters => UsesGenericCourse
+        ? trainingCourse.CurrentStoneDiameterMeters * 0.5f
+        : caseLoader.GetCurrentStoneRadiusMeters();
+    private string ActiveCourseName => UsesGenericCourse ? trainingCourse.DisplayName : caseLoader?.CurrentCaseName ?? "carregando";
+
+    private Bounds CalculateActiveBounds()
+    {
+        Renderer[] renderers = ActiveContentRoot != null
+            ? ActiveContentRoot.GetComponentsInChildren<Renderer>(true)
+            : Array.Empty<Renderer>();
+        if (renderers.Length == 0) return new Bounds(transform.position, Vector3.one * 0.5f);
+        Bounds bounds = renderers[0].bounds;
+        for (int index = 1; index < renderers.Length; index++) bounds.Encapsulate(renderers[index].bounds);
+        return bounds;
+    }
+
     private void PrepareLoadedCase()
     {
-        if (caseLoader == null || !caseLoader.IsReady || caseLoader.ContentRoot == null) return;
+        bool genericCourse = UsesGenericCourse;
+        if (!genericCourse && (caseLoader == null || !caseLoader.IsReady || caseLoader.ContentRoot == null)) return;
         if (probe != null)
         {
             PreserveEndoscopeCamera();
             Destroy(probe.gameObject);
             probe = null;
         }
-        if (interiorVisualRoot != null) Destroy(interiorVisualRoot);
+        if (interiorVisualRoot != null && ownsInteriorVisualRoot) Destroy(interiorVisualRoot);
+        interiorVisualRoot = null;
+        ownsInteriorVisualRoot = false;
         EnsureCameras();
-        CreateInteriorVisual();
+        if (genericCourse)
+        {
+            interiorVisualRoot = trainingCourse.InteriorVisualRoot;
+            routePositions = trainingCourse.CopyRoutePositions();
+            trainingCourse.SetPresentation(false);
+        }
+        else
+        {
+            CreateInteriorVisual();
+            routePositions = caseLoader.CopyCurrentRoutePositions();
+            kidneyVisualPresenter?.Configure(caseLoader, interiorVisualRoot);
+        }
         CreateProbe();
-        ConfigureMinimap();
         ApplyDifficultyVisuals();
-        routePositions = caseLoader.CopyCurrentRoutePositions();
-        navigationVisuals?.Configure(endoscopeCamera, caseLoader, probe, routePositions);
+        ITrainingCourseView activeCourse = ActiveCourseView;
+        navigationVisuals?.Configure(endoscopeCamera, activeCourse, probe, routePositions);
+        Bounds externalBounds = genericCourse
+            ? trainingCourse.SystemBounds
+            : kidneyVisualPresenter != null ? kidneyVisualPresenter.SystemBounds : CalculateActiveBounds();
+        externalCameraController?.Configure(endoscopeCamera, probe, externalBounds);
+        ApplyCameraPresentation(false);
+        ConfigureMinimap();
     }
 
     private void PreserveEndoscopeCamera()
@@ -250,8 +354,9 @@ public class UreteroscopyTrainingController : MonoBehaviour
         endoscopeCamera.farClipPlane = experienceMode == TrainingExperienceMode.Exploration ? 6f : 3f;
         endoscopeCamera.fieldOfView = 78f;
         endoscopeCamera.clearFlags = CameraClearFlags.SolidColor;
-        endoscopeCamera.backgroundColor = new Color(0.025f, 0.005f, 0.008f);
+        endoscopeCamera.backgroundColor = new Color(0.015f, 0.09f, 0.11f);
         endoscopeCamera.cullingMask &= ~(1 << MinimapOnlyLayer);
+        endoscopeCamera.cullingMask |= 1 << KidneyVisualPresenter.ExternalAnatomyLayer;
 
         if (minimapCamera == null)
         {
@@ -264,6 +369,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         minimapCamera.clearFlags = CameraClearFlags.SolidColor;
         minimapCamera.backgroundColor = new Color(0.015f, 0.035f, 0.055f);
         minimapCamera.cullingMask &= ~((1 << InteriorLayer) | (1 << TrainingNavigationVisuals.GuidanceLayer));
+        minimapCamera.cullingMask |= (1 << MinimapOnlyLayer) | (1 << KidneyVisualPresenter.ExternalAnatomyLayer);
         minimapCamera.depth = -10f;
         if (minimapTexture == null)
         {
@@ -282,6 +388,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         if (anatomy == null) return;
         SetLayerRecursively(anatomy.transform, MinimapOnlyLayer);
         interiorVisualRoot = new GameObject("Training Interior Visual");
+        ownsInteriorVisualRoot = true;
         interiorVisualRoot.transform.SetParent(caseLoader.ContentRoot, false);
         interiorVisualRoot.layer = InteriorLayer;
         Material tissue = BuildInteriorMaterial();
@@ -308,11 +415,11 @@ public class UreteroscopyTrainingController : MonoBehaviour
         Material material = new Material(shader) { color = new Color(0.62f, 0.085f, 0.11f, 1f) };
         material.doubleSidedGI = true;
         if (material.HasProperty("_Cull")) material.SetFloat("_Cull", 0f);
-        if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.65f);
-        if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.65f);
+        if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.22f);
+        if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.22f);
         if (material.HasProperty("_EmissionColor"))
         {
-            material.SetColor("_EmissionColor", new Color(0.08f, 0.005f, 0.008f));
+            material.SetColor("_EmissionColor", new Color(0.018f, 0.0015f, 0.002f));
             material.EnableKeyword("_EMISSION");
         }
         return material;
@@ -323,9 +430,9 @@ public class UreteroscopyTrainingController : MonoBehaviour
         GameObject probeObject = new GameObject("Training Ureteroscope Tip");
         probeObject.layer = MinimapOnlyLayer;
         probe = probeObject.transform;
-        probe.SetParent(caseLoader.ContentRoot, false);
-        probe.localPosition = caseLoader.GetCurrentStartLocal();
-        Vector3 next = caseLoader.SampleCurrentRouteLocal(Mathf.Min(0.01f, caseLoader.CurrentRouteLengthMeters));
+        probe.SetParent(ActiveContentRoot, false);
+        probe.localPosition = ActiveStartLocal;
+        Vector3 next = ActiveCourseView.SampleRouteLocal(Mathf.Min(0.01f, ActiveCourseView.RouteLengthMeters));
         Vector3 forward = next - probe.localPosition;
         initialProbeRotation = forward.sqrMagnitude > 0.000001f
             ? Quaternion.LookRotation(forward.normalized, Vector3.up)
@@ -342,6 +449,23 @@ public class UreteroscopyTrainingController : MonoBehaviour
         Renderer markerRenderer = marker.GetComponent<Renderer>();
         markerRenderer.material.color = new Color(0.1f, 1f, 0.95f);
 
+        externalProbeVisual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        externalProbeVisual.name = "External Ureteroscope Tip Visual";
+        externalProbeVisual.layer = KidneyVisualPresenter.ExternalAnatomyLayer;
+        externalProbeVisual.transform.SetParent(probe, false);
+        externalProbeVisual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        externalProbeVisual.transform.localScale = new Vector3(0.0024f, 0.004f, 0.0024f);
+        Collider externalCollider = externalProbeVisual.GetComponent<Collider>();
+        if (externalCollider != null) Destroy(externalCollider);
+        Renderer externalRenderer = externalProbeVisual.GetComponent<Renderer>();
+        Shader externalShader = Shader.Find("Universal Render Pipeline/Lit");
+        if (externalShader == null) externalShader = Shader.Find("Standard");
+        Material externalMaterial = new Material(externalShader) { color = new Color(0.12f, 0.72f, 0.9f, 1f) };
+        if (externalMaterial.HasProperty("_Metallic")) externalMaterial.SetFloat("_Metallic", 0.55f);
+        if (externalMaterial.HasProperty("_Smoothness")) externalMaterial.SetFloat("_Smoothness", 0.7f);
+        externalRenderer.sharedMaterial = externalMaterial;
+        externalProbeVisual.SetActive(false);
+
         endoscopeCamera.transform.SetParent(probe, false);
         endoscopeCamera.transform.localPosition = Vector3.zero;
         endoscopeCamera.transform.localRotation = Quaternion.identity;
@@ -351,14 +475,15 @@ public class UreteroscopyTrainingController : MonoBehaviour
         light.type = LightType.Spot;
         light.range = 0.12f;
         light.spotAngle = 95f;
-        light.intensity = 2.2f;
+        light.intensity = 1.35f;
         light.color = new Color(1f, 0.83f, 0.76f);
         light.shadows = LightShadows.None;
     }
 
     private void ConfigureMinimap()
     {
-        Renderer[] renderers = caseLoader.ContentRoot.GetComponentsInChildren<Renderer>(true);
+        if (ActiveContentRoot == null) return;
+        Renderer[] renderers = ActiveContentRoot.GetComponentsInChildren<Renderer>(true);
         if (renderers.Length == 0) return;
         Bounds bounds = renderers[0].bounds;
         for (int index = 1; index < renderers.Length; index++) bounds.Encapsulate(renderers[index].bounds);
@@ -366,6 +491,36 @@ public class UreteroscopyTrainingController : MonoBehaviour
         minimapCamera.orthographicSize = size * 1.25f;
         minimapCamera.transform.position = bounds.center + Vector3.up * Mathf.Max(0.25f, bounds.size.y + 0.15f);
         minimapCamera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+    }
+
+    private void ApplyCameraPresentation(bool exploration)
+    {
+        if (endoscopeCamera == null) return;
+        endoscopeCamera.farClipPlane = exploration ? 6f : 3f;
+        endoscopeCamera.backgroundColor = exploration
+            ? new Color(0.015f, 0.09f, 0.11f)
+            : new Color(0.025f, 0.005f, 0.008f);
+        endoscopeCamera.cullingMask &= ~(1 << MinimapOnlyLayer);
+        if (exploration)
+        {
+            endoscopeCamera.cullingMask &= ~(1 << InteriorLayer);
+            endoscopeCamera.cullingMask |= (1 << KidneyVisualPresenter.ExternalAnatomyLayer) |
+                                           (1 << TrainingNavigationVisuals.GuidanceLayer);
+        }
+        else
+        {
+            endoscopeCamera.cullingMask |= (1 << InteriorLayer) | (1 << TrainingNavigationVisuals.GuidanceLayer);
+            endoscopeCamera.cullingMask &= ~(1 << KidneyVisualPresenter.ExternalAnatomyLayer);
+        }
+        if (externalProbeVisual != null) externalProbeVisual.SetActive(exploration);
+        if (UsesGenericCourse)
+        {
+            trainingCourse.SetPresentation(exploration);
+        }
+        else if (caseLoader?.StartMarkerObject != null)
+        {
+            caseLoader.StartMarkerObject.SetActive(!exploration);
+        }
     }
 
     public void BeginSession()
@@ -380,7 +535,14 @@ public class UreteroscopyTrainingController : MonoBehaviour
             : new KeyboardTrainingInput(millimetersPerEncoderTick, mouseSensitivity);
         State = TrainingSessionState.Calibrating;
         calibrateRequested = inputMode == TrainingInputMode.Keyboard;
-        navigationVisuals?.SetPresentation(false, experienceMode == TrainingExperienceMode.Exploration);
+        bool exploration = experienceMode == TrainingExperienceMode.Exploration;
+        navigationVisuals?.SetPresentation(false, false);
+        navigationVisuals?.SetExternalExplorationActive(exploration);
+        navigationVisuals?.SetTrainingGuidanceActive(!exploration);
+        if (!UsesGenericCourse) kidneyVisualPresenter?.SetExplorationActive(exploration);
+        ApplyCameraPresentation(exploration);
+        externalCameraController?.SetExplorationActive(exploration);
+        ConfigureMinimap();
         if (inputMode == TrainingInputMode.Keyboard)
         {
             feedbackMessage = "Ativando teclado e mouse...";
@@ -454,9 +616,15 @@ public class UreteroscopyTrainingController : MonoBehaviour
         lastEncoderTicks = frame.encoderTicks;
         previousAction = frame.actionPressed;
         State = TrainingSessionState.Running;
-        navigationVisuals?.SetPresentation(true, experienceMode == TrainingExperienceMode.Exploration);
+        bool exploration = experienceMode == TrainingExperienceMode.Exploration;
+        navigationVisuals?.SetPresentation(!exploration && difficulty == TrainingDifficulty.Tutorial, false);
+        navigationVisuals?.SetExternalExplorationActive(exploration);
+        navigationVisuals?.SetTrainingGuidanceActive(!exploration);
+        if (!UsesGenericCourse) kidneyVisualPresenter?.SetExplorationActive(exploration);
+        ApplyCameraPresentation(exploration);
+        externalCameraController?.SetExplorationActive(exploration);
         feedbackMessage = experienceMode == TrainingExperienceMode.Exploration
-            ? "Exploração livre ativa. A seta indica a rota planejada."
+            ? "CÂMERA LIVRE • WASD/QE mover • botão direito olhar • Tab instrumento"
             : "Calibrado. Navegue até a pedra.";
         feedbackUntil = Time.unscaledTime + 2f;
     }
@@ -502,9 +670,11 @@ public class UreteroscopyTrainingController : MonoBehaviour
         {
             collisionEvents++;
             collisionFlashUntil = Time.unscaledTime + Mathf.Max(0.1f, collisionFlashSeconds);
-            feedbackMessage = $"Contato bloqueado — colisão {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)}.";
+            int limit = Mathf.Max(1, maximumCollisionEvents);
+            int remaining = Mathf.Max(0, limit - collisionEvents);
+            feedbackMessage = $"COLISÃO — {collisionEvents}/{limit} • Restam {remaining}";
             feedbackUntil = Time.unscaledTime + 1.5f;
-            if (collisionEvents >= Mathf.Max(1, maximumCollisionEvents))
+            if (collisionEvents >= limit)
             {
                 FinishSession(false, "LIMITE DE COLISÕES — DNF");
                 return;
@@ -522,6 +692,19 @@ public class UreteroscopyTrainingController : MonoBehaviour
         {
             probe.position += direction * distance;
             return true;
+        }
+
+        if (UsesGenericCourse)
+        {
+            float genericSafeDistance = trainingCourse.FindAllowedTravel(
+                probe.position,
+                direction,
+                distance,
+                tipRadiusMeters);
+            bool contactedWall = genericSafeDistance + 0.000001f < distance;
+            probe.position += direction * genericSafeDistance;
+            traveledMeters += genericSafeDistance;
+            return !contactedWall;
         }
 
         float permittedDistance = distance;
@@ -558,7 +741,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
     {
         if (requestedDistance <= 0f || routePositions == null || routePositions.Length < 2) return 0f;
         Vector3 requestedWorld = probe.position + direction * requestedDistance;
-        Vector3 requestedLocal = caseLoader.ContentRoot.InverseTransformPoint(requestedWorld);
+        Vector3 requestedLocal = ActiveContentRoot.InverseTransformPoint(requestedWorld);
         if (TrainingMetrics.IsWithinRouteCorridor(requestedLocal, routePositions, corridorRadius)) return requestedDistance;
 
         float low = 0f;
@@ -566,7 +749,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         for (int iteration = 0; iteration < 8; iteration++)
         {
             float middle = (low + high) * 0.5f;
-            Vector3 candidateLocal = caseLoader.ContentRoot.InverseTransformPoint(probe.position + direction * middle);
+            Vector3 candidateLocal = ActiveContentRoot.InverseTransformPoint(probe.position + direction * middle);
             if (TrainingMetrics.IsWithinRouteCorridor(candidateLocal, routePositions, corridorRadius)) low = middle;
             else high = middle;
         }
@@ -575,10 +758,10 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void UpdateTargetAlignment()
     {
-        if (probe == null || caseLoader == null) return;
-        Vector3 targetWorld = caseLoader.ContentRoot.TransformPoint(caseLoader.GetCurrentTargetLocal());
+        if (probe == null || ActiveContentRoot == null) return;
+        Vector3 targetWorld = ActiveContentRoot.TransformPoint(ActiveTargetLocal);
         Vector3 toTarget = targetWorld - probe.position;
-        float targetRadius = caseLoader.GetCurrentStoneRadiusMeters();
+        float targetRadius = ActiveStoneRadiusMeters;
         float tolerance = Mathf.Max(targetRadius + targetExtraToleranceMillimeters * 0.001f, minimumTargetToleranceMillimeters * 0.001f);
         float angle = toTarget.sqrMagnitude > 0.0000001f ? Vector3.Angle(probe.forward, toTarget.normalized) : 0f;
         if (toTarget.magnitude <= tolerance && angle <= targetAngleToleranceDegrees)
@@ -627,6 +810,11 @@ public class UreteroscopyTrainingController : MonoBehaviour
         showGiveUpConfirmation = false;
         StopInput();
         navigationVisuals?.SetPresentation(false, false);
+        navigationVisuals?.SetExternalExplorationActive(false);
+        navigationVisuals?.SetTrainingGuidanceActive(false);
+        if (!UsesGenericCourse) kidneyVisualPresenter?.SetExplorationActive(false);
+        externalCameraController?.SetExplorationActive(false);
+        ApplyCameraPresentation(false);
         ResetMetrics();
         PrepareLoadedCase();
         State = TrainingSessionState.Ready;
@@ -643,17 +831,24 @@ public class UreteroscopyTrainingController : MonoBehaviour
         incompleteHeading = unfinishedTitle;
         showGiveUpConfirmation = false;
         navigationVisuals?.SetPresentation(false, false);
+        navigationVisuals?.SetExternalExplorationActive(false);
+        navigationVisuals?.SetTrainingGuidanceActive(false);
+        if (!UsesGenericCourse) kidneyVisualPresenter?.SetExplorationActive(false);
+        externalCameraController?.SetExplorationActive(false);
+        ApplyCameraPresentation(false);
         float rmsMeters = deviationSamples > 0 ? Mathf.Sqrt(squaredDeviationSum / deviationSamples) : 0f;
-        VrRouteData route = caseLoader.CurrentRoute;
+        VrRouteData route = UsesGenericCourse ? null : caseLoader.CurrentRoute;
         float plannedMillimeters = route?.metrics != null && route.metrics.smoothed_length_mm > 0f
             ? route.metrics.smoothed_length_mm
-            : caseLoader.CurrentRouteLengthMeters * 1000f;
+            : ActiveCourseView.RouteLengthMeters * 1000f;
         lastResult = new TrainingSessionResult
         {
             participantCode = TrainingCsvLogger.SanitizeParticipantCode(participantCode),
             timestampUtc = DateTime.UtcNow.ToString("O"),
-            caseId = caseLoader.CurrentManifest?.case_id ?? caseLoader.CurrentCaseName,
-            routeId = route?.route_id ?? "legacy_route",
+            caseId = UsesGenericCourse
+                ? trainingCourse.CourseId
+                : caseLoader.CurrentManifest?.case_id ?? caseLoader.CurrentCaseName,
+            routeId = UsesGenericCourse ? trainingCourse.RouteId : route?.route_id ?? "legacy_route",
             difficulty = difficulty.ToString(),
             completed = completed,
             elapsedSeconds = elapsedSeconds,
@@ -693,6 +888,12 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void ApplyDifficultyVisuals()
     {
+        if (UsesGenericCourse)
+        {
+            if (trainingCourse.SmoothedPathObject != null) trainingCourse.SmoothedPathObject.SetActive(true);
+            if (trainingCourse.CurrentTargetObject != null) trainingCourse.CurrentTargetObject.SetActive(true);
+            return;
+        }
         if (caseLoader?.RouteRoot == null) return;
         caseLoader.RouteRoot.gameObject.SetActive(experienceMode == TrainingExperienceMode.Exploration || difficulty != TrainingDifficulty.Advanced);
         int routeLayer = difficulty == TrainingDifficulty.Intermediate ? MinimapOnlyLayer : 0;
@@ -729,7 +930,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         float panelHeight = State == TrainingSessionState.Ready
             ? 400f
             : activeHud
-                ? experienceMode == TrainingExperienceMode.Training ? 180f : 160f
+                ? 190f
                 : 220f;
         GUI.Box(new Rect(14, 14, panelWidth, panelHeight), "");
         if (activeHud)
@@ -738,12 +939,12 @@ public class UreteroscopyTrainingController : MonoBehaviour
                 ? "URETEROSCOPIA • TREINAMENTO"
                 : "URETEROSCOPIA • EXPLORAÇÃO";
             GUI.Label(new Rect(26, 20, 310, 24), activeTitle, hudTitleStyle);
-            GUI.Label(new Rect(26, 45, 305, 19), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", hudLabelStyle);
+            GUI.Label(new Rect(26, 45, 305, 19), $"Fase: {ActiveCourseName}", hudLabelStyle);
         }
         else
         {
             GUI.Label(new Rect(28, 24, 360, 34), "TREINAMENTO DE URETEROSCOPIA", titleStyle);
-            GUI.Label(new Rect(28, 60, 400, 24), $"Caso: {caseLoader?.CurrentCaseName ?? "carregando"}", labelStyle);
+            GUI.Label(new Rect(28, 60, 400, 24), $"Fase: {ActiveCourseName}", labelStyle);
         }
 
         if (State == TrainingSessionState.Ready)
@@ -763,7 +964,8 @@ public class UreteroscopyTrainingController : MonoBehaviour
             }
             else
             {
-                GUI.Label(new Rect(28, 126, 400, 62), "Explore dentro e fora do modelo sem pontuação ou CSV.\nA seta 3D colorida indica o próximo trecho da rota.", labelStyle);
+                GUI.Label(new Rect(28, 126, 400, 62),
+                    "Câmera externa livre sem pontuação ou CSV.\nTab alterna entre câmera e instrumento; F reenquadra o sistema.", labelStyle);
             }
 
             GUI.Label(new Rect(28, 200, 100, 24), "Controle:", labelStyle);
@@ -795,7 +997,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
         }
         else if (State == TrainingSessionState.LoadingCase)
         {
-            GUI.Label(new Rect(28, 98, 350, 30), "Carregando anatomia, pedra e rota...", labelStyle);
+            GUI.Label(new Rect(28, 98, 350, 30), "Preparando sistema HRA, lúmen, pedra e rota...", labelStyle);
         }
         else if (State == TrainingSessionState.Calibrating || State == TrainingSessionState.SensorPaused)
         {
@@ -833,7 +1035,9 @@ public class UreteroscopyTrainingController : MonoBehaviour
         {
             if (experienceMode == TrainingExperienceMode.Training)
             {
-                GUI.Label(new Rect(26, 68, 305, 20), $"Tempo {elapsedSeconds:F1}s  •  Colisões {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)}", hudLabelStyle);
+                GUI.Label(new Rect(26, 68, 305, 20),
+                    $"Tempo {elapsedSeconds:F1}s • Colisões {collisionEvents}/{Mathf.Max(1, maximumCollisionEvents)} • restantes {RemainingCollisionEvents}",
+                    hudLabelStyle);
                 GUI.Label(new Rect(26, 90, 305, 20), $"Desvio da rota: {CurrentDeviationMillimeters:F1} mm", hudLabelStyle);
                 string target = targetStableTimer > 0f ? $"ALVO ALINHADO {Mathf.Clamp01(targetStableTimer / targetStableSeconds) * 100f:F0}%" : "Procure e alinhe a pedra";
                 GUI.Label(new Rect(26, 112, 305, 20), target, hudLabelStyle);
@@ -841,16 +1045,23 @@ public class UreteroscopyTrainingController : MonoBehaviour
             else
             {
                 GUI.Label(new Rect(26, 68, 305, 20), "Livre • sem pontuação ou CSV", hudLabelStyle);
-                GUI.Label(new Rect(26, 90, 305, 20), $"Distância da rota: {CurrentDeviationMillimeters:F1} mm", hudLabelStyle);
+                string navigationMode = externalCameraController != null &&
+                                        externalCameraController.Mode == ExplorationNavigationMode.ProbeFollow
+                    ? "INSTRUMENTO"
+                    : "CÂMERA LIVRE";
+                GUI.Label(new Rect(26, 90, 305, 20), $"{navigationMode} • Tab alternar • F reenquadrar", hudLabelStyle);
+                GUI.Label(new Rect(26, 112, 305, 20), $"Distância da rota: {CurrentDeviationMillimeters:F1} mm", hudLabelStyle);
             }
             if (inputMode == TrainingInputMode.Keyboard)
             {
-                string actionHelp = experienceMode == TrainingExperienceMode.Training ? "Centro/Espaço: confirmar" : "Seta: próximo trecho";
-                float helpY = experienceMode == TrainingExperienceMode.Training ? 136f : 114f;
-                GUI.Label(new Rect(26, helpY, 190, 34), $"Mouse Esq./Dir.: mover\n{actionHelp}", hudLabelStyle);
+                string actionHelp = experienceMode == TrainingExperienceMode.Training
+                    ? "Mouse Esq./Dir.: mover\nCentro/Espaço: confirmar"
+                    : "Câmera: WASD/QE • Shift rápido\nBotão direito + mouse: olhar";
+                float helpY = experienceMode == TrainingExperienceMode.Training ? 136f : 136f;
+                GUI.Label(new Rect(26, helpY, 190, 34), actionHelp, hudLabelStyle);
             }
             string endLabel = experienceMode == TrainingExperienceMode.Training ? "DESISTIR" : "SAIR";
-            float buttonY = experienceMode == TrainingExperienceMode.Training ? 140f : 118f;
+            float buttonY = 146f;
             if (GUI.Button(new Rect(222, buttonY, 118, 30), endLabel, hudButtonStyle))
             {
                 if (experienceMode == TrainingExperienceMode.Training) RequestGiveUpConfirmation();
@@ -929,6 +1140,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void OnDisable()
     {
+        if (trainingCourse != null) trainingCourse.CourseReady -= HandleTrainingCourseReady;
         if (caseLoader != null)
         {
             caseLoader.CaseReady -= HandleCaseReady;
@@ -939,6 +1151,8 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (externalCameraController != null)
+            externalCameraController.NavigationModeChanged -= HandleExplorationNavigationModeChanged;
         if (runtimeUiFont != null) Destroy(runtimeUiFont);
         if (minimapTexture != null)
         {
