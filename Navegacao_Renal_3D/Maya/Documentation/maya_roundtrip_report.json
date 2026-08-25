@@ -1,0 +1,183 @@
+{
+  "passed": true,
+  "triangle_counts_match": true,
+  "world_bounds_match": true,
+  "physical_scale_pass": true,
+  "measurements_cm": {
+    "kidney_exterior_height": 14.8467,
+    "collecting_system_with_ureter_height": 15.3783,
+    "stone_dimensions": [
+      0.6508,
+      0.6949,
+      0.6591
+    ]
+  },
+  "source": {
+    "label": "maya_master",
+    "missing_nodes": [],
+    "meshes": {
+      "KidneyExterior": {
+        "vertices": 58192,
+        "triangles": 116380,
+        "bounds_cm": [
+          -3.854,
+          -7.5148,
+          -2.775,
+          5.765,
+          7.3319,
+          3.075
+        ]
+      },
+      "CollectingSystemVisual": {
+        "vertices": 27214,
+        "triangles": 54424,
+        "bounds_cm": [
+          -4.757,
+          -9.2208,
+          -1.7836,
+          3.6926,
+          6.1575,
+          2.0806
+        ]
+      },
+      "CollectingSystemCollision_Inward": {
+        "vertices": 6532,
+        "triangles": 13060,
+        "bounds_cm": [
+          -4.7536,
+          -9.2186,
+          -1.7822,
+          3.6898,
+          6.1575,
+          2.0786
+        ]
+      },
+      "RouteGuide": {
+        "vertices": 4320,
+        "triangles": 8636,
+        "bounds_cm": [
+          -4.3847,
+          -8.608,
+          -0.4849,
+          2.78,
+          1.5305,
+          0.7329
+        ]
+      },
+      "Stone": {
+        "vertices": 2562,
+        "triangles": 5120,
+        "bounds_cm": [
+          2.693,
+          1.1454,
+          0.3625,
+          3.3438,
+          1.8403,
+          1.0216
+        ]
+      }
+    },
+    "anchors_cm": {
+      "StartAnchor": [
+        -4.3,
+        -8.6,
+        -0.4
+      ],
+      "TargetAnchor": [
+        3.0,
+        1.5,
+        0.7
+      ],
+      "MinimapAnchor": [
+        15.5,
+        -14.0,
+        11.0
+      ]
+    },
+    "linear_unit": "cm"
+  },
+  "fbx": {
+    "label": "fbx_round_trip",
+    "missing_nodes": [],
+    "meshes": {
+      "KidneyExterior": {
+        "vertices": 58192,
+        "triangles": 116380,
+        "bounds_cm": [
+          -3.854,
+          -7.5148,
+          -2.775,
+          5.765,
+          7.3319,
+          3.075
+        ]
+      },
+      "CollectingSystemVisual": {
+        "vertices": 27214,
+        "triangles": 54424,
+        "bounds_cm": [
+          -4.757,
+          -9.2208,
+          -1.7836,
+          3.6926,
+          6.1575,
+          2.0806
+        ]
+      },
+      "CollectingSystemCollision_Inward": {
+        "vertices": 6532,
+        "triangles": 13060,
+        "bounds_cm": [
+          -4.7536,
+          -9.2186,
+          -1.7822,
+          3.6898,
+          6.1575,
+          2.0786
+        ]
+      },
+      "RouteGuide": {
+        "vertices": 4320,
+        "triangles": 8636,
+        "bounds_cm": [
+          -4.3847,
+          -8.608,
+          -0.4849,
+          2.78,
+          1.5305,
+          0.7329
+        ]
+      },
+      "Stone": {
+        "vertices": 2562,
+        "triangles": 5120,
+        "bounds_cm": [
+          2.693,
+          1.1454,
+          0.3625,
+          3.3438,
+          1.8403,
+          1.0216
+        ]
+      }
+    },
+    "anchors_cm": {
+      "StartAnchor": [
+        -4.3,
+        -8.6,
+        -0.4
+      ],
+      "TargetAnchor": [
+        3.0,
+        1.5,
+        0.7
+      ],
+      "MinimapAnchor": [
+        15.5,
+        -14.0,
+        11.0
+      ]
+    },
+    "linear_unit": "cm"
+  }
+}

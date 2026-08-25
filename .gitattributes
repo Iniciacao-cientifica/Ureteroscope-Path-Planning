@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+Navegacao_Renal_3D/Maya/Source/*.ma filter=lfs diff=lfs merge=lfs -text
+Navegacao_Renal_3D/Maya/Exports/*.fbx filter=lfs diff=lfs merge=lfs -text
+Navegacao_Renal_3D/Maya/Exports/OBJ_Fallback/*.obj filter=lfs diff=lfs merge=lfs -text
+Navegacao_Renal_3D/Unity/Assets/Art/Kidney/Models/*.fbx filter=lfs diff=lfs merge=lfs -text
