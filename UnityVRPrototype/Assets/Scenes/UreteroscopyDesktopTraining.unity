@@ -164,7 +164,7 @@ MonoBehaviour:
   maximumCollisionEvents: 5
   collisionFlashSeconds: 0.4
   inputMode: 0
-  serialPort: AUTO
+  serialPort: COM16
   mouseSensitivity: 2
 --- !u!4 &1176446965
 Transform:

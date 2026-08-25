@@ -63,7 +63,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
     [Header("Input")]
     public TrainingInputMode inputMode = TrainingInputMode.Keyboard;
-    public string serialPort = "AUTO";
+    public string serialPort = "COM16";
     [Range(0.5f, 4f)] public float mouseSensitivity = 2f;
     public bool invertMpuAdvance;
     [Range(0f, 20f)] public float mpuTiltDeadZoneDegrees = 8f;

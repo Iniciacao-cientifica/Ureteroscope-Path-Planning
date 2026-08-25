@@ -67,6 +67,15 @@ public class TrainingEditModeTests
         Assert.That(SerialControllerInput.IsPacketFresh(now - TimeSpan.FromSeconds(2.1).Ticks, now), Is.False);
     }
 
+    [TestCase("16", "COM16")]
+    [TestCase("COM16", "COM16")]
+    [TestCase("com 16", "COM16")]
+    [TestCase("", "COM16")]
+    public void ExperimentalSerialNormalizesPortSixteen(string value, string expected)
+    {
+        Assert.That(SerialControllerInput.NormalizePortName(value), Is.EqualTo(expected));
+    }
+
     [Test]
     public void ActionButtonOnlyCreatesAnEdgeWhenFirstPressed()
     {

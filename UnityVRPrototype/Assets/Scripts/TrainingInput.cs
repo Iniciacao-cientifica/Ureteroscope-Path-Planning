@@ -257,7 +257,21 @@ public sealed class SerialControllerInput : ITrainingInputSource
 
     public SerialControllerInput(string portName)
     {
-        requestedPort = string.IsNullOrWhiteSpace(portName) ? "AUTO" : portName.Trim();
+        requestedPort = NormalizePortName(portName);
+    }
+
+    public static string NormalizePortName(string portName)
+    {
+        string normalizedPort = string.IsNullOrWhiteSpace(portName) ? "COM16" : portName.Trim().Replace(" ", "");
+        if (int.TryParse(normalizedPort, out int portNumber) && portNumber > 0)
+        {
+            normalizedPort = "COM" + portNumber;
+        }
+        else if (normalizedPort.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedPort = "COM" + normalizedPort.Substring(3);
+        }
+        return normalizedPort;
     }
 
     public bool IsConnected

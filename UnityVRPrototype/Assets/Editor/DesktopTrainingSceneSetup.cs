@@ -57,7 +57,7 @@ public static class DesktopTrainingSceneSetup
         controller.maximumCollisionEvents = 5;
         controller.collisionFlashSeconds = 0.4f;
         controller.inputMode = TrainingInputMode.Keyboard;
-        controller.serialPort = "AUTO";
+        controller.serialPort = "COM16";
         controller.mouseSensitivity = 2f;
 
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
