@@ -76,6 +76,49 @@ public class TrainingPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator PressingActionAtAnAlignedTargetCompletesOnlyOnce()
+    {
+        SceneManager.LoadScene("UreteroscopyDesktopTraining");
+        yield return null;
+
+        Component controller = GameObject.Find("Desktop Training Controller")?.GetComponent("UreteroscopyTrainingController");
+        Component loader = GameObject.Find("Training Case Loader")?.GetComponent("VrCaseLoader");
+        Assert.That(controller, Is.Not.Null);
+        Assert.That(loader, Is.Not.Null);
+        yield return WaitUntilCaseReady(loader);
+
+        Type controllerType = controller.GetType();
+        controllerType.GetMethod("BeginSession").Invoke(controller, null);
+        yield return null;
+        yield return null;
+        Assert.That(controllerType.GetProperty("State").GetValue(controller).ToString(), Is.EqualTo("Running"));
+
+        FieldInfo stableTimer = controllerType.GetField("targetStableTimer", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo stableSeconds = controllerType.GetField("targetStableSeconds");
+        FieldInfo neutralOrientation = controllerType.GetField("neutralOrientation", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo lastEncoderTicks = controllerType.GetField("lastEncoderTicks", BindingFlags.Instance | BindingFlags.NonPublic);
+        stableTimer.SetValue(controller, stableSeconds.GetValue(controller));
+
+        MethodInfo processFrame = controllerType.GetMethod("ProcessFrame", BindingFlags.Instance | BindingFlags.NonPublic);
+        Type frameType = processFrame.GetParameters()[0].ParameterType;
+        object pressed = Activator.CreateInstance(frameType);
+        frameType.GetField("orientation").SetValue(pressed, (Quaternion)neutralOrientation.GetValue(controller));
+        frameType.GetField("encoderTicks").SetValue(pressed, (long)lastEncoderTicks.GetValue(controller));
+        frameType.GetField("actionPressed").SetValue(pressed, true);
+        frameType.GetField("imuOk").SetValue(pressed, true);
+        frameType.GetField("firmwareVersion").SetValue(pressed, "mpu6050-text-test");
+        processFrame.Invoke(controller, new object[] { pressed });
+
+        Assert.That(controllerType.GetProperty("State").GetValue(controller).ToString(), Is.EqualTo("Finished"));
+        object result = controllerType.GetField("lastResult", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(controller);
+        Assert.That(result, Is.Not.Null);
+        Assert.That((bool)result.GetType().GetField("completed").GetValue(result), Is.True);
+
+        processFrame.Invoke(controller, new object[] { pressed });
+        Assert.That(controllerType.GetField("lastResult", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(controller), Is.SameAs(result));
+    }
+
+    [UnityTest]
     public IEnumerator ExplorationShowsGuidanceAllowsFreeMovementAndDoesNotCreateResult()
     {
         SceneManager.LoadScene("UreteroscopyDesktopTraining");

@@ -68,14 +68,14 @@ Salve a cena com `Ctrl+S`. Para gerar um novo executável use `Murillo VR > Buil
 
 ## Usar a vareta física
 
-1. Grave o firmware em `hardware/firmware/ureteroscope_controller` no ESP32-S3.
-2. Conecte o ESP32 ao computador por USB e mantenha a vareta imóvel durante os dois segundos de calibração do giroscópio.
-3. No jogo escolha `Vareta USB` e deixe a porta como `AUTO`.
+1. Grave `hardware/firmware/mpu6050_text_test/mpu6050_text_test.ino` no ESP32.
+2. Conecte o ESP32 ao computador por USB e mantenha o MPU6050 imóvel.
+3. No jogo escolha `MPU6050 USB` e deixe a porta como `AUTO`.
 4. Se a conexão automática falhar, consulte a porta no Gerenciador de Dispositivos do Windows e informe `COM3`, `COM4` ou a porta encontrada.
-5. Use a calibração guiada e desloque exatamente 100 mm para calcular `mm por tick`.
-6. Inicie uma sessão curta: o MPU6050 controla a orientação e o encoder mede avanço e recuo.
+5. Inicie uma sessão, clique em `CALIBRAR AGORA` com o controle na posição neutra e incline para frente ou para trás para mover.
+6. Use `INVERTER AVANÇO` se o sentido físico ficar trocado. O botão no GPIO 25 confirma a pedra quando o alvo estiver alinhado.
 
-O jogo pausa depois de 500 ms sem pacotes válidos. Nesse caso confira o cabo USB, a porta COM, o Serial Monitor fechado e a taxa do firmware.
+Este modo experimental aceita o texto de aceleração, giroscópio e botão enviado a cada 700 ms. O jogo pausa depois de dois segundos sem uma amostra completa. Nesse caso confira o cabo USB, a porta COM e se o Monitor Serial está fechado.
 
 ## Problemas comuns
 
@@ -83,7 +83,7 @@ O jogo pausa depois de 500 ms sem pacotes válidos. Nesse caso confira o cabo US
 - **Tela sem caso ou rota:** abra a Console do Unity, procure o primeiro erro vermelho e confirme que `StreamingAssets/Cases` foi incluído no build.
 - **Alteração sumiu:** ela provavelmente foi feita durante o Play Mode; repita com o jogo parado e salve a cena.
 - **A vareta não conecta:** feche o Serial Monitor do Arduino, use `AUTO` ou informe a porta COM manualmente.
-- **O movimento avança na direção errada:** refaça a calibração de 100 mm e, se necessário, inverta os canais A/B do encoder.
+- **O movimento avança na direção errada:** volte ao menu e ative `INVERTER AVANÇO`.
 - **A orientação deriva:** recoloque a vareta na posição neutra, mantenha-a imóvel e pressione o botão de calibração ou `C` no simulador.
 - **A ponta não atravessa uma abertura no treinamento:** isso é esperado quando a abertura sai do corredor seguro de 15 mm; use `Exploração livre` para inspecionar o exterior.
 

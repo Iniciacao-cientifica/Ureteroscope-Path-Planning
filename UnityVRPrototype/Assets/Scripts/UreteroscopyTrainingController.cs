@@ -65,6 +65,10 @@ public class UreteroscopyTrainingController : MonoBehaviour
     public TrainingInputMode inputMode = TrainingInputMode.Keyboard;
     public string serialPort = "AUTO";
     [Range(0.5f, 4f)] public float mouseSensitivity = 2f;
+    public bool invertMpuAdvance;
+    [Range(0f, 20f)] public float mpuTiltDeadZoneDegrees = 8f;
+    [Range(10f, 60f)] public float mpuFullSpeedTiltDegrees = 30f;
+    [Range(1f, 40f)] public float mpuMaximumSpeedMillimetersPerSecond = 18f;
 
     public TrainingSessionState State { get; private set; } = TrainingSessionState.LoadingCase;
     public float ElapsedSeconds => elapsedSeconds;
@@ -78,6 +82,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
     private TrainingNavigationVisuals navigationVisuals;
     private Vector3[] routePositions = Array.Empty<Vector3>();
     private Quaternion neutralOrientation = Quaternion.identity;
+    private float neutralMpuTiltDegrees;
     private Quaternion initialProbeRotation = Quaternion.identity;
     private TrainingInputFrame latestFrame;
     private bool hasLatestFrame;
@@ -451,6 +456,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
             return;
         }
         neutralOrientation = frame.orientation;
+        neutralMpuTiltDegrees = frame.longitudinalTiltDegrees;
         lastEncoderTicks = frame.encoderTicks;
         previousAction = frame.actionPressed;
         State = TrainingSessionState.Running;
@@ -468,9 +474,24 @@ public class UreteroscopyTrainingController : MonoBehaviour
         Quaternion desired = initialProbeRotation * relativeOrientation;
         probe.localRotation = Quaternion.Slerp(probe.localRotation, desired, 1f - Mathf.Exp(-rotationSmoothing * Time.deltaTime));
 
-        long tickDelta = frame.encoderTicks - lastEncoderTicks;
-        lastEncoderTicks = frame.encoderTicks;
-        float deltaMeters = Mathf.Clamp(TrainingInputMath.TicksToMeters(tickDelta, millimetersPerEncoderTick), -0.02f, 0.02f);
+        float deltaMeters;
+        if (inputMode == TrainingInputMode.SerialUsb)
+        {
+            float relativeTilt = Mathf.DeltaAngle(neutralMpuTiltDegrees, frame.longitudinalTiltDegrees);
+            float advance = TrainingInputMath.TiltToAdvance(
+                relativeTilt,
+                invertMpuAdvance,
+                mpuTiltDeadZoneDegrees,
+                mpuFullSpeedTiltDegrees
+            );
+            deltaMeters = advance * Mathf.Max(0f, mpuMaximumSpeedMillimetersPerSecond) * 0.001f * Time.deltaTime;
+        }
+        else
+        {
+            long tickDelta = frame.encoderTicks - lastEncoderTicks;
+            lastEncoderTicks = frame.encoderTicks;
+            deltaMeters = Mathf.Clamp(TrainingInputMath.TicksToMeters(tickDelta, millimetersPerEncoderTick), -0.02f, 0.02f);
+        }
         bool enforceSafety = experienceMode == TrainingExperienceMode.Training;
         bool contacting = Mathf.Abs(deltaMeters) > 0.000001f && !TryMoveProbe(deltaMeters, enforceSafety);
         UpdateCollisionState(enforceSafety && contacting);
@@ -483,7 +504,7 @@ public class UreteroscopyTrainingController : MonoBehaviour
             deviationSamples++;
         }
 
-        bool actionEdge = frame.actionPressed && !previousAction;
+        bool actionEdge = TrainingInputMath.IsActionPressedEdge(frame.actionPressed, previousAction);
         if (enforceSafety && actionEdge)
         {
             if (targetStableTimer >= targetStableSeconds) FinishSession(true);
@@ -768,16 +789,13 @@ public class UreteroscopyTrainingController : MonoBehaviour
 
             GUI.Label(new Rect(28, 200, 100, 24), "Controle:", labelStyle);
             if (GUI.Toggle(new Rect(130, 198, 110, 26), inputMode == TrainingInputMode.Keyboard, "Teclado", "Button")) inputMode = TrainingInputMode.Keyboard;
-            if (GUI.Toggle(new Rect(242, 198, 127, 26), inputMode == TrainingInputMode.SerialUsb, "Vareta USB", "Button")) inputMode = TrainingInputMode.SerialUsb;
+            if (GUI.Toggle(new Rect(242, 198, 127, 26), inputMode == TrainingInputMode.SerialUsb, "MPU6050 USB", "Button")) inputMode = TrainingInputMode.SerialUsb;
             if (inputMode == TrainingInputMode.SerialUsb)
             {
                 GUI.Label(new Rect(28, 236, 100, 24), "Porta COM:", labelStyle);
                 serialPort = GUI.TextField(new Rect(130, 234, 239, 27), serialPort, 16);
-            }
-            if (inputMode == TrainingInputMode.SerialUsb && GUI.Button(new Rect(28, 272, 400, 30), $"CALIBRAR ENCODER 100 mm ({millimetersPerEncoderTick:F4} mm/tick)"))
-            {
-                BeginEncoderCalibration();
-                return;
+                invertMpuAdvance = GUI.Toggle(new Rect(28, 272, 190, 30), invertMpuAdvance, "INVERTER AVANÇO", "Button");
+                GUI.Label(new Rect(224, 268, 204, 42), "Incline frente/trás para mover", centeredStyle);
             }
             else if (inputMode == TrainingInputMode.Keyboard)
             {
@@ -848,6 +866,12 @@ public class UreteroscopyTrainingController : MonoBehaviour
                 string actionHelp = experienceMode == TrainingExperienceMode.Training ? "Centro/Espaço: confirmar" : "Seta: próximo trecho";
                 float helpY = experienceMode == TrainingExperienceMode.Training ? 136f : 114f;
                 GUI.Label(new Rect(26, helpY, 190, 34), $"Mouse Esq./Dir.: mover\n{actionHelp}", hudLabelStyle);
+            }
+            else
+            {
+                string actionHelp = experienceMode == TrainingExperienceMode.Training ? "Botão: confirmar pedra" : "Botão: ação";
+                float helpY = experienceMode == TrainingExperienceMode.Training ? 136f : 114f;
+                GUI.Label(new Rect(26, helpY, 190, 34), $"Inclinar: avançar/recuar\n{actionHelp}", hudLabelStyle);
             }
             string endLabel = experienceMode == TrainingExperienceMode.Training ? "DESISTIR" : "SAIR";
             float buttonY = experienceMode == TrainingExperienceMode.Training ? 140f : 118f;

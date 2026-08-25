@@ -1,22 +1,18 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEngine;
 
-[Serializable]
-public class TrainingControllerPacket
+public struct Mpu6050TextSample
 {
-    public int v;
-    public long seq;
-    public long ms;
-    public float[] q;
-    public long ticks;
-    public int buttons;
-    public bool imu_ok;
-    public string fw;
+    public Vector3 acceleration;
+    public Vector3 angularVelocity;
+    public bool actionPressed;
 }
 
 public struct TrainingInputFrame
@@ -25,53 +21,91 @@ public struct TrainingInputFrame
     public long timestampMilliseconds;
     public Quaternion orientation;
     public long encoderTicks;
+    public float longitudinalTiltDegrees;
     public bool actionPressed;
     public bool calibratePressed;
     public bool imuOk;
     public string firmwareVersion;
 }
 
-public static class TrainingControllerProtocol
+public sealed class Mpu6050TextProtocol
 {
-    public const int CurrentVersion = 1;
+    private const string Number = @"[-+]?(?:\d+(?:\.\d*)?|\.\d+)";
+    private static readonly Regex AccelerationPattern = new Regex(
+        @"Aceleracao\s*\([^)]*\)\s*:\s*X\s*=\s*(?<x>" + Number + @")\s+Y\s*=\s*(?<y>" + Number + @")\s+Z\s*=\s*(?<z>" + Number + @")",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
+    private static readonly Regex GyroscopePattern = new Regex(
+        @"Giroscopio\s*\([^)]*\)\s*:\s*X\s*=\s*(?<x>" + Number + @")\s+Y\s*=\s*(?<y>" + Number + @")\s+Z\s*=\s*(?<z>" + Number + @")",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+    );
 
-    public static bool TryParse(string line, out TrainingInputFrame frame)
+    private Vector3 acceleration;
+    private Vector3 angularVelocity;
+    private bool hasAcceleration;
+    private bool hasAngularVelocity;
+
+    public bool AcceptLine(string line, out Mpu6050TextSample sample)
     {
-        frame = default;
+        sample = default;
         if (string.IsNullOrWhiteSpace(line) || line.Length > 512) return false;
-        TrainingControllerPacket packet;
-        try
+
+        Match accelerationMatch = AccelerationPattern.Match(line);
+        if (accelerationMatch.Success)
         {
-            packet = JsonUtility.FromJson<TrainingControllerPacket>(line);
-        }
-        catch
-        {
+            if (!TryReadVector(accelerationMatch, out acceleration)) return false;
+            hasAcceleration = true;
+            hasAngularVelocity = false;
             return false;
         }
-        if (packet == null || packet.v != CurrentVersion || packet.q == null || packet.q.Length != 4)
+
+        Match gyroscopeMatch = GyroscopePattern.Match(line);
+        if (gyroscopeMatch.Success)
         {
+            if (!TryReadVector(gyroscopeMatch, out angularVelocity)) return false;
+            hasAngularVelocity = true;
             return false;
         }
-        for (int index = 0; index < packet.q.Length; index++)
+
+        int actionLabel = line.IndexOf("Agarrando", StringComparison.OrdinalIgnoreCase);
+        if (actionLabel < 0 || !hasAcceleration || !hasAngularVelocity) return false;
+        int separator = line.IndexOf(':', actionLabel);
+        if (separator < 0) return false;
+        string value = line.Substring(separator + 1).Trim();
+        bool actionPressed;
+        if (value.StartsWith("SIM", StringComparison.OrdinalIgnoreCase)) actionPressed = true;
+        else if (value.StartsWith("NAO", StringComparison.OrdinalIgnoreCase) ||
+                 value.StartsWith("NÃO", StringComparison.OrdinalIgnoreCase)) actionPressed = false;
+        else return false;
+
+        sample = new Mpu6050TextSample
         {
-            if (float.IsNaN(packet.q[index]) || float.IsInfinity(packet.q[index])) return false;
-        }
-        Quaternion orientation = new Quaternion(packet.q[1], packet.q[2], packet.q[3], packet.q[0]);
-        float magnitudeSquared = orientation.x * orientation.x + orientation.y * orientation.y +
-            orientation.z * orientation.z + orientation.w * orientation.w;
-        if (magnitudeSquared < 0.25f) return false;
-        frame = new TrainingInputFrame
-        {
-            sequence = packet.seq,
-            timestampMilliseconds = packet.ms,
-            orientation = Quaternion.Normalize(orientation),
-            encoderTicks = packet.ticks,
-            actionPressed = (packet.buttons & 1) != 0,
-            calibratePressed = (packet.buttons & 2) != 0,
-            imuOk = packet.imu_ok,
-            firmwareVersion = string.IsNullOrWhiteSpace(packet.fw) ? "unknown" : packet.fw
+            acceleration = acceleration,
+            angularVelocity = angularVelocity,
+            actionPressed = actionPressed
         };
+        hasAcceleration = false;
+        hasAngularVelocity = false;
         return true;
+    }
+
+    private static bool TryReadVector(Match match, out Vector3 value)
+    {
+        value = default;
+        if (!float.TryParse(match.Groups["x"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
+            !float.TryParse(match.Groups["y"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ||
+            !float.TryParse(match.Groups["z"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float z))
+        {
+            return false;
+        }
+        if (!IsFinite(x) || !IsFinite(y) || !IsFinite(z)) return false;
+        value = new Vector3(x, y, z);
+        return true;
+    }
+
+    private static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }
 
@@ -95,6 +129,29 @@ public static class TrainingInputMath
     public static float KeyboardRotationDegrees(float input, float degreesPerSecond, float deltaTime)
     {
         return input * degreesPerSecond * Mathf.Max(0f, deltaTime);
+    }
+
+    public static float LongitudinalTiltDegrees(Vector3 acceleration)
+    {
+        if (acceleration.sqrMagnitude < 0.0001f) return 0f;
+        return Mathf.Atan2(-acceleration.x, Mathf.Sqrt(acceleration.y * acceleration.y + acceleration.z * acceleration.z)) * Mathf.Rad2Deg;
+    }
+
+    public static float TiltToAdvance(float relativeTiltDegrees, bool inverted, float deadZoneDegrees = 8f, float fullSpeedDegrees = 30f)
+    {
+        float sign = inverted ? -1f : 1f;
+        float signedTilt = Mathf.DeltaAngle(0f, relativeTiltDegrees) * sign;
+        float magnitude = Mathf.Abs(signedTilt);
+        float deadZone = Mathf.Max(0f, deadZoneDegrees);
+        float fullSpeed = Mathf.Max(deadZone + 0.01f, fullSpeedDegrees);
+        if (magnitude <= deadZone) return 0f;
+        float normalized = Mathf.InverseLerp(deadZone, fullSpeed, magnitude);
+        return Mathf.Sign(signedTilt) * normalized;
+    }
+
+    public static bool IsActionPressedEdge(bool current, bool previous)
+    {
+        return current && !previous;
     }
 }
 
@@ -175,15 +232,28 @@ public sealed class KeyboardTrainingInput : ITrainingInputSource
 
 public sealed class SerialControllerInput : ITrainingInputSource
 {
-    private readonly ConcurrentQueue<TrainingInputFrame> frames = new ConcurrentQueue<TrainingInputFrame>();
+    public const double ConnectionTimeoutSeconds = 2.0;
+    public const string ExperimentalFirmwareVersion = "mpu6050-text-test";
+
+    private readonly ConcurrentQueue<Mpu6050TextSample> samples = new ConcurrentQueue<Mpu6050TextSample>();
     private readonly string requestedPort;
+    private readonly Mpu6050TextProtocol parser = new Mpu6050TextProtocol();
     private Thread readerThread;
     private volatile bool stopRequested;
     private volatile bool connected;
     private long lastPacketUtcTicks;
     private string activePort = "";
-    private string firmwareVersion = "unknown";
     private float nextConnectAttempt;
+    private Vector3 latestAcceleration;
+    private Vector3 latestAngularVelocity;
+    private bool latestActionPressed;
+    private bool hasSensorSample;
+    private float pitch;
+    private float yaw;
+    private float roll;
+    private long sequence;
+    private TrainingInputFrame generatedFrame;
+    private bool hasGeneratedFrame;
 
     public SerialControllerInput(string portName)
     {
@@ -195,13 +265,19 @@ public sealed class SerialControllerInput : ITrainingInputSource
         get
         {
             if (!connected) return false;
-            double age = (DateTime.UtcNow.Ticks - Interlocked.Read(ref lastPacketUtcTicks)) / (double)TimeSpan.TicksPerSecond;
-            return age <= 0.5;
+            return IsPacketFresh(Interlocked.Read(ref lastPacketUtcTicks), DateTime.UtcNow.Ticks);
         }
     }
 
     public string DisplayName => string.IsNullOrEmpty(activePort) ? "Controle USB procurando..." : $"Controle USB ({activePort})";
-    public string FirmwareVersion => firmwareVersion;
+    public string FirmwareVersion => ExperimentalFirmwareVersion;
+
+    public static bool IsPacketFresh(long lastPacketTicks, long nowTicks)
+    {
+        if (lastPacketTicks <= 0 || nowTicks < lastPacketTicks) return false;
+        double age = (nowTicks - lastPacketTicks) / (double)TimeSpan.TicksPerSecond;
+        return age <= ConnectionTimeoutSeconds;
+    }
 
     public void Tick()
     {
@@ -214,18 +290,71 @@ public sealed class SerialControllerInput : ITrainingInputSource
             readerThread.Start();
         }
 #endif
+
+        bool receivedSample = false;
+        while (samples.TryDequeue(out Mpu6050TextSample sample))
+        {
+            latestAcceleration = sample.acceleration;
+            latestAngularVelocity = sample.angularVelocity;
+            latestActionPressed = sample.actionPressed;
+            receivedSample = true;
+        }
+        if (receivedSample && !hasSensorSample)
+        {
+            float accelerationPitch = TrainingInputMath.LongitudinalTiltDegrees(latestAcceleration);
+            float accelerationRoll = Mathf.Atan2(latestAcceleration.y, latestAcceleration.z) * Mathf.Rad2Deg;
+            pitch = accelerationPitch;
+            roll = accelerationRoll;
+            hasSensorSample = true;
+        }
+        if (!hasSensorSample || !IsConnected)
+        {
+            hasGeneratedFrame = false;
+            return;
+        }
+
+        float deltaTime = Mathf.Max(0f, Time.unscaledDeltaTime);
+        const float gyroDeadZoneRadians = 0.03f;
+        Vector3 gyro = new Vector3(
+            ApplyDeadZone(latestAngularVelocity.x, gyroDeadZoneRadians),
+            ApplyDeadZone(latestAngularVelocity.y, gyroDeadZoneRadians),
+            ApplyDeadZone(latestAngularVelocity.z, gyroDeadZoneRadians)
+        );
+        pitch += gyro.x * Mathf.Rad2Deg * deltaTime;
+        yaw += gyro.y * Mathf.Rad2Deg * deltaTime;
+        roll += gyro.z * Mathf.Rad2Deg * deltaTime;
+
+        float magnitude = latestAcceleration.magnitude;
+        if (magnitude >= 2f && magnitude <= 20f)
+        {
+            float accelerationPitch = TrainingInputMath.LongitudinalTiltDegrees(latestAcceleration);
+            float accelerationRoll = Mathf.Atan2(latestAcceleration.y, latestAcceleration.z) * Mathf.Rad2Deg;
+            float correction = 1f - Mathf.Exp(-2f * deltaTime);
+            pitch = Mathf.LerpAngle(pitch, accelerationPitch, correction);
+            roll = Mathf.LerpAngle(roll, accelerationRoll, correction);
+        }
+
+        generatedFrame = new TrainingInputFrame
+        {
+            sequence = ++sequence,
+            timestampMilliseconds = (long)(Time.realtimeSinceStartupAsDouble * 1000.0),
+            orientation = Quaternion.Euler(pitch, yaw, roll),
+            encoderTicks = 0,
+            longitudinalTiltDegrees = TrainingInputMath.LongitudinalTiltDegrees(latestAcceleration),
+            actionPressed = latestActionPressed,
+            calibratePressed = false,
+            imuOk = true,
+            firmwareVersion = ExperimentalFirmwareVersion
+        };
+        hasGeneratedFrame = true;
     }
 
     public bool TryGetLatestFrame(out TrainingInputFrame frame)
     {
-        frame = default;
-        bool found = false;
-        while (frames.TryDequeue(out TrainingInputFrame candidate))
-        {
-            frame = candidate;
-            found = true;
-        }
-        return found;
+        frame = generatedFrame;
+        bool result = hasGeneratedFrame;
+        hasGeneratedFrame = false;
+        return result;
     }
 
     public void Dispose()
@@ -233,6 +362,11 @@ public sealed class SerialControllerInput : ITrainingInputSource
         stopRequested = true;
         if (readerThread != null && readerThread.IsAlive) readerThread.Join(300);
         connected = false;
+    }
+
+    private static float ApplyDeadZone(float value, float deadZone)
+    {
+        return Mathf.Abs(value) < deadZone ? 0f : value;
     }
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
@@ -309,9 +443,8 @@ public sealed class SerialControllerInput : ITrainingInputSource
 
     private void AcceptLine(string line)
     {
-        if (!TrainingControllerProtocol.TryParse(line, out TrainingInputFrame frame)) return;
-        frames.Enqueue(frame);
-        firmwareVersion = frame.firmwareVersion;
+        if (!parser.AcceptLine(line, out Mpu6050TextSample sample)) return;
+        samples.Enqueue(sample);
         Interlocked.Exchange(ref lastPacketUtcTicks, DateTime.UtcNow.Ticks);
         connected = true;
     }

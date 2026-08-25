@@ -51,7 +51,7 @@ The build fails early when the catalog, case files, OpenXR loader, Android modul
 
 ## Desktop training
 
-Open `Assets/Scenes/UreteroscopyDesktopTraining.unity` and press Play. The setup screen selects keyboard/mouse or the USB physical probe, three difficulty levels, anonymous participant code, and 100 mm encoder calibration. Build Windows from `Murillo VR > Build Desktop Training (Windows)`.
+Open `Assets/Scenes/UreteroscopyDesktopTraining.unity` and press Play. The setup screen selects keyboard/mouse or the experimental MPU6050 USB controller, three difficulty levels, anonymous participant code, tilt direction, and serial port. Build Windows from `Murillo VR > Build Desktop Training (Windows)`.
 
 ## Clinical boundary
 

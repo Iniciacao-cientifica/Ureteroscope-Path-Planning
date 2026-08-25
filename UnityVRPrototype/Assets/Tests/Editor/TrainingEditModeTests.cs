@@ -7,23 +7,27 @@ using UnityEngine;
 public class TrainingEditModeTests
 {
     [Test]
-    public void ProtocolParsesVersionedQuaternionAndButtons()
+    public void MpuTextProtocolCombinesAccelerationGyroscopeAndButton()
     {
-        const string json = "{\"v\":1,\"seq\":7,\"ms\":90,\"q\":[1,0,0,0],\"ticks\":25,\"buttons\":3,\"imu_ok\":true,\"fw\":\"test\"}";
-        Assert.That(TrainingControllerProtocol.TryParse(json, out TrainingInputFrame frame), Is.True);
-        Assert.That(frame.sequence, Is.EqualTo(7));
-        Assert.That(frame.encoderTicks, Is.EqualTo(25));
-        Assert.That(frame.actionPressed, Is.True);
-        Assert.That(frame.calibratePressed, Is.True);
-        Assert.That(frame.orientation, Is.EqualTo(Quaternion.identity));
+        Mpu6050TextProtocol parser = new Mpu6050TextProtocol();
+        Assert.That(parser.AcceptLine("   Aceleracao (m/s^2):  X=-1.25  Y=0.50  Z=9.70", out _), Is.False);
+        Assert.That(parser.AcceptLine("   Giroscopio (rad/s):  X=0.10  Y=-0.20  Z=0.30", out _), Is.False);
+        Assert.That(parser.AcceptLine("   Agarrando: SIM", out Mpu6050TextSample sample), Is.True);
+        Assert.That(sample.acceleration, Is.EqualTo(new Vector3(-1.25f, 0.5f, 9.7f)));
+        Assert.That(sample.angularVelocity, Is.EqualTo(new Vector3(0.1f, -0.2f, 0.3f)));
+        Assert.That(sample.actionPressed, Is.True);
     }
 
-    [TestCase("")]
-    [TestCase("{\"v\":2,\"q\":[1,0,0,0]}")]
-    [TestCase("{\"v\":1,\"q\":[0,0,0,0]}")]
-    public void ProtocolRejectsMalformedOrUnsupportedPackets(string value)
+    [Test]
+    public void MpuTextProtocolRejectsIncompleteSamplesAndParsesReleasedButton()
     {
-        Assert.That(TrainingControllerProtocol.TryParse(value, out _), Is.False);
+        Mpu6050TextProtocol parser = new Mpu6050TextProtocol();
+        Assert.That(parser.AcceptLine("Agarrando: SIM", out _), Is.False);
+        Assert.That(parser.AcceptLine("Aceleracao (m/s^2): X=0 Y=0 Z=9.81", out _), Is.False);
+        Assert.That(parser.AcceptLine("Agarrando: nao", out _), Is.False);
+        Assert.That(parser.AcceptLine("Giroscopio (rad/s): X=0 Y=0 Z=0", out _), Is.False);
+        Assert.That(parser.AcceptLine("Agarrando: nao", out Mpu6050TextSample sample), Is.True);
+        Assert.That(sample.actionPressed, Is.False);
     }
 
     [Test]
@@ -41,6 +45,34 @@ public class TrainingEditModeTests
         Assert.That(TrainingInputMath.MouseRotationDegrees(3f, 2f), Is.EqualTo(6f).Within(0.00001f));
         Assert.That(TrainingInputMath.MouseRotationDegrees(3f, 99f), Is.EqualTo(12f).Within(0.00001f));
         Assert.That(TrainingInputMath.KeyboardRotationDegrees(1f, 70f, 0.5f), Is.EqualTo(35f).Within(0.00001f));
+    }
+
+    [Test]
+    public void MpuTiltUsesDeadZoneProgressiveSpeedAndInversion()
+    {
+        Assert.That(TrainingInputMath.TiltToAdvance(7.9f, false), Is.Zero);
+        Assert.That(TrainingInputMath.TiltToAdvance(19f, false), Is.EqualTo(0.5f).Within(0.0001f));
+        Assert.That(TrainingInputMath.TiltToAdvance(30f, false), Is.EqualTo(1f).Within(0.0001f));
+        Assert.That(TrainingInputMath.TiltToAdvance(-30f, false), Is.EqualTo(-1f).Within(0.0001f));
+        Assert.That(TrainingInputMath.TiltToAdvance(30f, true), Is.EqualTo(-1f).Within(0.0001f));
+        Assert.That(TrainingInputMath.LongitudinalTiltDegrees(new Vector3(-9.81f, 0f, 0f)), Is.EqualTo(90f).Within(0.001f));
+    }
+
+    [Test]
+    public void ExperimentalSerialTimeoutAcceptsSevenHundredMillisecondPackets()
+    {
+        long now = DateTime.UtcNow.Ticks;
+        Assert.That(SerialControllerInput.IsPacketFresh(now - TimeSpan.FromSeconds(0.7).Ticks, now), Is.True);
+        Assert.That(SerialControllerInput.IsPacketFresh(now - TimeSpan.FromSeconds(1.9).Ticks, now), Is.True);
+        Assert.That(SerialControllerInput.IsPacketFresh(now - TimeSpan.FromSeconds(2.1).Ticks, now), Is.False);
+    }
+
+    [Test]
+    public void ActionButtonOnlyCreatesAnEdgeWhenFirstPressed()
+    {
+        Assert.That(TrainingInputMath.IsActionPressedEdge(true, false), Is.True);
+        Assert.That(TrainingInputMath.IsActionPressedEdge(true, true), Is.False);
+        Assert.That(TrainingInputMath.IsActionPressedEdge(false, true), Is.False);
     }
 
     [Test]
