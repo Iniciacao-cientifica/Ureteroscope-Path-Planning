@@ -447,6 +447,11 @@ namespace NavegacaoRenal.Editor
             active.transform.rotation = Quaternion.Euler(2f, -12f, -5f);
 
             CreateMeshyUrinaryVisual(systems.transform, meshyUrinaryMaterial, active.transform);
+            // O alinhamento principal usa o rim direito Meshy como referencia.
+            // Depois dele, aproxima somente o rim ativo esquerdo 7,5 cm no
+            // mundo visual para unir sua saida ao ureter sem deslocar o resto
+            // do sistema urinario.
+            active.transform.position += new Vector3(0.075f, 0f, 0f);
             CreateLighting();
 
             GameObject managerObject = new GameObject("KidneyGameManager");

@@ -51,6 +51,8 @@ O Unity `6000.5.0f1` concluiu `58` verificações sem erro. Foram confirmados:
 - contato visual dos dois ureteres com os respectivos rins;
 - ausência das malhas procedurais antigas na cena;
 - ausência de colliders no novo visual;
+- conexão visual esquerda corrigida movendo apenas o rim ativo `0,075 m` para
+  a direita na escala do jogo, sem deslocar rim direito, ureteres ou bexiga;
 - todos os testes do controlador do Marco 3, inclusive 30/60/120 FPS;
 - três capturas automáticas externa e internas.
 

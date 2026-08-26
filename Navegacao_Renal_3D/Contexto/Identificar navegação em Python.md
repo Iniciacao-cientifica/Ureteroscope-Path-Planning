@@ -490,8 +490,9 @@ Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
   foi gerado com Metallic em R e `1 - Roughness` em A;
 - o novo conjunto usa escala uniforme `5×`, camada `KidneyExterior`, material
   URP compartilhado e nenhum collider;
-- o rim ativo aprovado foi preservado e reposicionado somente para alinhar o
-  conjunto, ficando simétrico ao rim direito em `x = -0,496/+0,496`;
+- o rim ativo aprovado foi preservado; após a primeira captura, ele recebeu um
+  ajuste isolado de `0,075 m` para a direita na escala visual (`0,015 m`
+  físicos), conectando sua saída ao ureter esquerdo sem mover o sistema Meshy;
 - os assets procedurais anteriores continuam no repositório como fallback,
   mas não são instanciados na cena;
 - `58` verificações passaram, incluindo colisão, contatos, reset, modos,

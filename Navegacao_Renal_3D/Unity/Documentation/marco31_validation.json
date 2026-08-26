@@ -1,7 +1,7 @@
 {
     "milestone": "Marco 3.1",
     "unityVersion": "6000.5.0f1",
-    "generatedUtc": "2026-08-26T19:44:33.5798275Z",
+    "generatedUtc": "2026-08-26T19:57:30.1440971Z",
     "passed": true,
     "fbxSha256": "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c",
     "visualFbxSha256": "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2",
@@ -33,7 +33,7 @@
         "OK: todo o visual Meshy usa a camada KidneyExterior",
         "OK: visual Meshy nao participa da colisao navegavel",
         "OK: malhas procedurais antigas preservadas como fallback, mas fora da cena",
-        "OK: ureter esquerdo visual alcanca o rim ativo (rim centro=(-0.496, 0.340, -0.011), tamanho=(0.570, 0.800, 0.408), sistema centro=(0.028, -0.659, -0.011), tamanho=(0.724, 1.871, 0.534))",
+        "OK: ureter esquerdo visual alcanca o rim ativo (rim centro=(-0.421, 0.340, -0.011), tamanho=(0.570, 0.800, 0.408), sistema centro=(0.028, -0.659, -0.011), tamanho=(0.724, 1.871, 0.534))",
         "OK: ureter direito visual alcanca o rim direito (rim centro=(0.496, 0.340, -0.011), tamanho=(0.485, 0.781, 0.411), sistema centro=(0.028, -0.659, -0.011), tamanho=(0.724, 1.871, 0.534))",
         "OK: FBX Meshy importado com altura fisica de 0,465000 m e centro (0.035, 0.233, 0.000)",
         "OK: raio da ponta = 0,010 m (2 mm fisicos em 5x)",
