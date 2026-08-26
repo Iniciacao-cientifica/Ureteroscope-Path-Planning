@@ -1,0 +1,32 @@
+{
+    "milestone": "Marco 2",
+    "unityVersion": "6000.5.0f1",
+    "generatedUtc": "2026-08-26T09:21:06.1327364Z",
+    "passed": true,
+    "fbxSha256": "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c",
+    "checks": [
+        "OK: FBX v002 presente",
+        "OK: manifesto v002 presente",
+        "OK: prefab KidneyLevel criado",
+        "OK: cena KidneyGame criada",
+        "OK: cena MainMenu criada",
+        "OK: no obrigatorio KidneyExterior",
+        "OK: no obrigatorio CollectingSystemVisual",
+        "OK: no obrigatorio CollectingSystemCollision_Inward",
+        "OK: no obrigatorio RouteGuide",
+        "OK: no obrigatorio Stone",
+        "OK: no obrigatorio StartAnchor",
+        "OK: no obrigatorio TargetAnchor",
+        "OK: no obrigatorio MinimapAnchor",
+        "OK: altura fisica importada 0,150614 m",
+        "OK: escala visual 5x",
+        "OK: MeshCollider interno criado",
+        "OK: SHA-256 do FBX v002",
+        "OK: um rim ativo detalhado",
+        "OK: um segundo rim na cena",
+        "OK: dois ureteres na cena",
+        "OK: bexiga na cena",
+        "OK: dois modos de navegacao"
+    ],
+    "errors": []
+}

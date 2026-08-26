@@ -1,7 +1,7 @@
 # Kidney Game v002
 
-Esta pasta contém somente os artefatos validados do Marco 1. O projeto Unity e
-os sistemas de gameplay ainda não foram iniciados.
+O `Kidney_Game_v002` é o modelo autoritativo usado pelo prefab e pela cena do
+Marco 2. O v001 foi mantido apenas como histórico e não deve ser colocado na cena.
 
 - `Kidney_Game_v002.fbx`: cópia byte a byte do FBX exportado pelo Maya.
 - `Kidney_Game_v002_manifest.json`: versão, escala, nós obrigatórios, SHA-256 e

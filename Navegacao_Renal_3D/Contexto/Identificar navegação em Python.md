@@ -428,18 +428,18 @@ o aceite final. O modelo não deve ser chamado de clinicamente validado.
 
 ### Marco 2 — fundação Unity e importação
 
-Próximo trabalho autorizado pelo usuário:
+Estado: implementado e validado em Unity `6000.5.0f1`.
 
-- criar/confirmar projeto Unity 6 URP novo;
-- importar exatamente `Kidney_Game_v002.fbx`;
-- validar centímetros para metros e escala visual 5×;
-- criar estrutura de pastas, layers, Input Actions e cenas;
-- criar prefab estável do nível renal;
-- reconhecer automaticamente exterior, interior, collider, rota, pedra e
-  âncoras;
-- montar a base visual do sistema urinário com dois rins, ureteres e bexiga;
-- executar validações automáticas de nomes, escala, hash e referências;
-- não implementar ainda a navegação final.
+- projeto Unity 6 URP novo criado, sem reutilizar o protótipo antigo;
+- `Kidney_Game_v002.fbx` importado com altura física de `0,150614 m` e raiz
+  visual `5×`;
+- prefab `KidneyLevel`, layers, materiais, cenas e gerador reproduzível criados;
+- exterior, interior, collider, rota, pedra e âncoras reconhecidos e validados;
+- base visual com dois rins, dois ureteres e bexiga montada;
+- modos Realista e Exploração receberam controles provisórios para permitir o
+  primeiro teste com mouse, sem declarar a navegação final concluída;
+- relatório automático aprovado sem erros e prévias registradas em
+  `Unity/Documentation`.
 
 ### Marco 3 — navegação realista
 
@@ -477,5 +477,6 @@ Quest.
 
 ## Próxima ação
 
-Registrar a correção `v002` e este contexto na branch `DoZero`, publicar a
-branch no remoto e então iniciar o Marco 2 em um commit separado.
+Abrir o Marco 2 no Unity pelo projeto externo da Área de Trabalho, testar os
+dois modos com mouse e colher o aceite visual/funcional do usuário. Depois do
+aceite, refinar o controlador e as colisões no Marco 3 antes de integrar a garra.
