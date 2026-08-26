@@ -26,7 +26,7 @@ from scipy.ndimage import distance_transform_edt, gaussian_filter
 from skimage.measure import marching_cubes
 
 
-VERSION = "v001"
+VERSION = "v002"
 MODEL_NAME = f"Kidney_Game_{VERSION}"
 TIP_RADIUS_MM = 2.0
 STONE_DIAMETER_MM = 6.0
@@ -42,8 +42,10 @@ class Material:
 
 
 MATERIALS = {
-    "exterior": Material("MAT_KidneyExterior", (0.48, 0.055, 0.095), 0.34),
-    "interior": Material("MAT_CollectingSystem", (0.83, 0.22, 0.31), 1.0),
+    # The Maya master opens with a solid kidney.  Transparency is reserved for
+    # the generated review preview so the asset no longer looks incomplete.
+    "exterior": Material("MAT_KidneyExterior", (0.48, 0.055, 0.095), 1.0),
+    "interior": Material("MAT_CollectingSystem", (0.93, 0.33, 0.42), 1.0),
     "collision": Material("MAT_CollisionDebug", (0.06, 0.64, 0.86), 0.18),
     "route": Material("MAT_RouteCyan", (0.00, 0.78, 1.00), 1.0),
     "stone": Material("MAT_StoneGold", (0.92, 0.56, 0.08), 1.0),
@@ -78,6 +80,52 @@ def tapered_segment_mask(x, y, z, start, end, radius_start, radius_end):
     return dx * dx + dy * dy + dz * dz <= radius * radius
 
 
+def oriented_ellipsoid_field(x, y, z, center, axis, axial_radius, radial_radius):
+    """Ellipsoid aligned to an arbitrary branch axis.
+
+    Minor calyces are not spherical bulbs.  Their terminal chamber is a short,
+    flattened cup aligned with the infundibulum; this field supplies the lip
+    and the papillary impression used by ``add_minor_calyx``.
+    """
+    center = np.asarray(center, dtype=np.float32)
+    axis = np.asarray(axis, dtype=np.float32)
+    axis /= np.linalg.norm(axis)
+    px, py, pz = x - center[0], y - center[1], z - center[2]
+    axial = px * axis[0] + py * axis[1] + pz * axis[2]
+    radial_sq = px * px + py * py + pz * pz - axial * axial
+    return (axial / axial_radius) ** 2 + radial_sq / (radial_radius * radial_radius)
+
+
+def add_minor_calyx(volume, x, y, z, neck, mouth, neck_radius=3.7, rim_radius=6.2):
+    """Add a flared minor calyx with a concave papillary cup.
+
+    The result is a closed lumen volume.  A shallow axial ellipsoid is added at
+    the mouth and a smaller ellipsoid entering from the papillary side is
+    subtracted, replacing the ball-shaped endings present in v001.
+    """
+    neck = np.asarray(neck, dtype=np.float32)
+    mouth = np.asarray(mouth, dtype=np.float32)
+    axis = mouth - neck
+    axis /= np.linalg.norm(axis)
+    volume |= tapered_segment_mask(
+        x, y, z, neck, mouth - axis * 1.2, neck_radius, rim_radius
+    )
+    lip_center = mouth - axis * 1.0
+    lip = oriented_ellipsoid_field(
+        x, y, z, lip_center, axis, axial_radius=3.6, radial_radius=rim_radius
+    ) <= 1.0
+    volume |= lip
+
+    # The indentation comes from outside the terminal chamber but stops before
+    # the neck, leaving a navigable, manifold and cup-shaped ending.
+    papilla_center = mouth + axis * 1.4
+    papilla = oriented_ellipsoid_field(
+        x, y, z, papilla_center, axis, axial_radius=5.2, radial_radius=rim_radius * 0.67
+    ) <= 1.0
+    volume &= ~papilla
+    return volume
+
+
 def volume_to_mesh(volume, origin, spacing, smoothing=25, pass_band=0.09):
     vertices, faces, _, _ = marching_cubes(
         volume.astype(np.float32), level=0.5, spacing=(spacing,) * 3
@@ -88,12 +136,9 @@ def volume_to_mesh(volume, origin, spacing, smoothing=25, pass_band=0.09):
     ).ravel()
     mesh = pv.PolyData(vertices, vtk_faces).clean().triangulate()
     if smoothing:
-        mesh = mesh.smooth(
-            n_iter=smoothing,
-            relaxation_factor=0.045,
-            feature_smoothing=False,
-            boundary_smoothing=True,
-        )
+        # Taubin smoothing removes marching-cubes stair stepping without the
+        # shrinkage and contour bands produced by repeated Laplacian passes.
+        mesh = mesh.smooth_taubin(n_iter=smoothing, pass_band=pass_band)
     return mesh.compute_normals(
         point_normals=True,
         cell_normals=False,
@@ -103,98 +148,95 @@ def volume_to_mesh(volume, origin, spacing, smoothing=25, pass_band=0.09):
 
 
 def build_exterior(x, y, z):
-    # Curved longitudinal axis and asymmetric poles create a natural renal
-    # silhouette while the medial subtraction creates the hilum/bean concavity.
-    curved_x = x - 0.055 * y - 0.0008 * y * y
-    body = ellipsoid_field(curved_x, y, z, (5.0, 0.0, 1.0), (47.0, 66.0, 28.0)) <= 1.0
-    lateral_bulge = ellipsoid_field(x, y, z, (20.0, -1.0, 1.5), (38.0, 57.0, 29.0)) <= 1.0
-    upper_pole = ellipsoid_field(x, y, z, (3.0, 43.0, -1.0), (39.0, 30.0, 26.0)) <= 1.0
-    lower_pole = ellipsoid_field(x, y, z, (9.0, -44.0, 2.0), (37.0, 31.0, 25.0)) <= 1.0
+    # A curved long axis, unequal poles and a fuller lateral border avoid the
+    # symmetric oval silhouette of the earlier blockout.
+    curved_x = x - 0.045 * y - 0.00055 * y * y
+    body = ellipsoid_field(curved_x, y, z, (7.0, 0.0, 0.0), (46.0, 67.0, 27.0)) <= 1.0
+    lateral_bulge = ellipsoid_field(x, y, z, (23.0, -2.0, 0.5), (35.0, 57.0, 28.0)) <= 1.0
+    upper_pole = ellipsoid_field(x, y, z, (4.0, 43.0, -1.0), (37.0, 31.0, 25.5)) <= 1.0
+    lower_pole = ellipsoid_field(x, y, z, (10.0, -43.0, 1.5), (35.0, 33.0, 24.5)) <= 1.0
     exterior = body | lateral_bulge | upper_pole | lower_pole
 
-    # The subtraction spans the anterior/posterior thickness so the medial
-    # concavity remains visible in the game silhouette instead of becoming a
-    # shallow dimple hidden by the anterior surface.
-    hilum = ellipsoid_field(x, y, z, (-43.0, 1.0, -1.0), (27.0, 27.0, 42.0)) <= 1.0
+    # Deep but rounded medial notch: enough space for pelvis/UPJ while keeping
+    # the external surface a single closed manifold.
+    hilum = ellipsoid_field(x, y, z, (-43.0, 0.0, -0.5), (25.0, 28.0, 38.0)) <= 1.0
     exterior &= ~hilum
 
-    exterior = gaussian_filter(exterior.astype(np.float32), sigma=1.35) >= 0.49
+    exterior = gaussian_filter(exterior.astype(np.float32), sigma=1.45) >= 0.49
     return exterior
 
 
 def build_collecting_system(x, y, z):
     collecting = np.zeros(np.broadcast_shapes(x.shape, y.shape, z.shape), dtype=bool)
 
-    # Ureter -> pelvis. Radii stay above the 8 mm minimum passage requirement.
+    # Ureter -> renal pelvis.  The progressive flare forms the ureteropelvic
+    # junction and a funnel-shaped pelvis instead of a large central sphere.
     segments = [
-        ((-43, -88, -4), (-42, -67, -3), 4.4, 4.6),
-        ((-42, -67, -3), (-38, -45, -2), 4.6, 5.2),
-        ((-38, -45, -2), (-31, -24, -1), 5.2, 6.1),
-        ((-31, -24, -1), (-24, -8, 0), 6.1, 8.3),
-        # Upper infundibulum and minor calyces.
-        ((-23, -3, 0), (-14, 17, 0), 8.0, 6.6),
-        ((-14, 17, 0), (-2, 34, 0), 6.6, 5.4),
-        ((-2, 34, 0), (14, 49, 6), 5.4, 4.3),
-        ((14, 49, 6), (27, 56, 10), 4.3, 4.1),
-        ((5, 40, 1), (23, 46, -9), 4.9, 4.1),
-        ((-5, 30, -1), (14, 35, 13), 4.8, 4.0),
-        # Middle infundibulum; the positive-Z terminal is the fixed target.
-        ((-21, 1, 0), (-4, 5, 1), 8.2, 6.4),
-        ((-4, 5, 1), (13, 10, 3), 6.4, 5.0),
-        ((13, 10, 3), (30, 15, 7), 5.0, 4.2),
-        ((5, 7, 0), (24, 3, -12), 4.9, 4.1),
-        ((1, 5, 1), (20, 18, 15), 4.8, 4.0),
-        # Lower infundibulum and minor calyces.
-        ((-23, -9, 0), (-13, -25, 0), 7.7, 6.3),
-        ((-13, -25, 0), (0, -40, 0), 6.3, 5.2),
-        ((0, -40, 0), (17, -54, 7), 5.2, 4.2),
-        ((17, -54, 7), (27, -59, 10), 4.2, 4.0),
-        ((6, -45, 0), (24, -49, -11), 4.8, 4.0),
-        ((-3, -36, -1), (15, -42, 14), 4.7, 4.0),
+        ((-43, -91, -3), (-42, -69, -3), 4.3, 4.5),
+        ((-42, -69, -3), (-38, -47, -2), 4.5, 5.0),
+        ((-38, -47, -2), (-32, -27, -1), 5.0, 6.1),
+        ((-32, -27, -1), (-25, -10, 0), 6.1, 8.8),
+        # Upper major calyx / infundibulum.
+        ((-26, -5, 0), (-18, 11, 0), 8.6, 7.2),
+        ((-18, 11, 0), (-8, 27, 0), 7.2, 5.7),
+        # Middle major calyx; its anterior branch contains the fixed stone.
+        ((-24, -2, 0), (-8, 2, 0), 8.5, 6.5),
+        ((-8, 2, 0), (7, 6, 1), 6.5, 5.2),
+        # Lower major calyx / infundibulum.
+        ((-26, -12, 0), (-18, -25, 0), 8.2, 6.9),
+        ((-18, -25, 0), (-7, -39, 0), 6.9, 5.6),
     ]
     for start, end, radius_start, radius_end in segments:
         collecting |= tapered_segment_mask(
             x, y, z, start, end, radius_start, radius_end
         )
 
-    # Broad renal pelvis and flattened cup-like terminal chambers.
-    collecting |= ellipsoid_field(x, y, z, (-23.0, -4.0, 0.0), (14.5, 22.0, 11.5)) <= 1.0
-    terminals = [
-        ((27, 56, 10), (6.8, 5.5, 6.2)),
-        ((23, 46, -9), (6.6, 5.6, 6.1)),
-        ((14, 35, 13), (6.3, 5.5, 5.8)),
-        ((30, 15, 7), (7.0, 5.8, 6.4)),
-        ((24, 3, -12), (6.6, 5.7, 6.0)),
-        ((20, 18, 15), (6.3, 5.5, 5.8)),
-        ((27, -59, 10), (6.7, 5.4, 6.0)),
-        ((24, -49, -11), (6.4, 5.6, 5.9)),
-        ((15, -42, 14), (6.2, 5.4, 5.7)),
-    ]
-    for center, radii in terminals:
-        collecting |= ellipsoid_field(x, y, z, center, radii) <= 1.0
+    # Flattened central pelvis blended into the funnel/major calyces.
+    collecting |= ellipsoid_field(x, y, z, (-25.0, -5.0, 0.0), (12.5, 18.5, 9.5)) <= 1.0
 
-    collecting = gaussian_filter(collecting.astype(np.float32), sigma=0.92) >= 0.43
+    # Each pair is (neck, mouth).  The terminal chamber flares and receives a
+    # concave papillary impression, so it reads as a calyx rather than a ball.
+    terminals = [
+        ((-8, 27, 0), (10, 45, 8)),
+        ((-5, 31, -1), (12, 43, -11)),
+        ((-10, 24, 1), (5, 34, 15)),
+        ((7, 6, 1), (28, 11, 8)),
+        ((4, 5, -1), (24, 1, -13)),
+        ((1, 7, 2), (18, 20, 15)),
+        ((-7, -39, 0), (11, -55, 8)),
+        ((-4, -42, -1), (14, -52, -12)),
+        ((-10, -35, 1), (6, -43, 15)),
+    ]
+    for index, (neck, mouth) in enumerate(terminals):
+        # The navigated middle calyx is slightly wider for the 4 mm instrument
+        # tip and 6 mm stone; all others retain believable minor-calyx scale.
+        rim_radius = 6.7 if index == 3 else 6.1
+        collecting = add_minor_calyx(
+            collecting, x, y, z, neck, mouth, neck_radius=3.8, rim_radius=rim_radius
+        )
+
+    collecting = gaussian_filter(collecting.astype(np.float32), sigma=0.72) >= 0.45
     return collecting, segments, terminals
 
 
 def make_route():
     control = np.asarray(
         [
-            (-43, -86, -4),
-            (-42, -72, -3.3),
-            (-41, -58, -2.6),
-            (-38, -45, -2),
-            (-34, -33, -1.5),
-            (-31, -24, -1),
-            (-27, -15, -0.4),
-            (-23, -7, 0),
-            (-19, -1, 0.3),
-            (-12, 2.5, 0.7),
-            (-4, 5, 1),
-            (5, 7.5, 2),
-            (13, 10, 3),
-            (21, 12.5, 5),
-            (27.5, 14.5, 6.5),
+            (-43, -88, -3),
+            (-42, -72, -3),
+            (-40, -58, -2.5),
+            (-38, -47, -2),
+            (-35, -36, -1.5),
+            (-32, -27, -1),
+            (-28, -17, -0.5),
+            (-25, -9, 0),
+            (-21, -4, 0),
+            (-15, -1, 0.2),
+            (-8, 2, 0.5),
+            (0, 4, 0.8),
+            (7, 6, 1),
+            (14, 7.8, 3),
+            (20.5, 9.0, 5.2),
         ],
         dtype=np.float32,
     )
@@ -203,7 +245,7 @@ def make_route():
     return control, np.asarray(centerline.points), tube
 
 
-def make_stone(center=(30.0, 15.0, 7.0)):
+def make_stone(center=(20.5, 9.0, 5.2)):
     center = np.asarray(center, dtype=np.float64)
     stone = pv.Icosphere(radius=STONE_DIAMETER_MM / 2, center=center, nsub=4)
     local = stone.points - center
@@ -233,7 +275,9 @@ def build_geometry():
 
     exterior = volume_to_mesh(exterior_volume, origin, spacing, 42, 0.085)
     collecting = volume_to_mesh(collecting_volume, origin, spacing, 38, 0.075)
-    collision = collecting.decimate_pro(0.76, preserve_topology=True).clean().triangulate()
+    # Deeper papillary cups require a conservative reduction.  More aggressive
+    # decimation can collapse the narrow calyceal rim into a non-manifold edge.
+    collision = collecting.decimate_pro(0.45, preserve_topology=True).clean().triangulate()
     collision = collision.compute_normals(
         point_normals=True,
         cell_normals=False,
@@ -286,7 +330,7 @@ def mesh_arrays(mesh, centimetres=True, inward=False):
 
 
 def write_mtl(path):
-    lines = ["# Navegacao Renal 3D - game model v001"]
+    lines = [f"# Navegacao Renal 3D - game model {VERSION}"]
     for material in MATERIALS.values():
         lines.extend(
             [
@@ -317,7 +361,7 @@ def append_obj(lines, name, mesh, material, vertex_offset, normal_offset, inward
 
 
 def write_obj(path, entries):
-    lines = ["# Navegacao Renal 3D - centimetres, Y up", "mtllib Kidney_Game_v001.mtl", ""]
+    lines = ["# Navegacao Renal 3D - centimetres, Y up", f"mtllib {MODEL_NAME}.mtl", ""]
     vo = no = 0
     for name, mesh, material, inward in entries:
         vo, no = append_obj(lines, name, mesh, material, vo, no, inward)
@@ -372,7 +416,7 @@ def validate_geometry(meshes, build_data):
     )
     minimum_clearance = float(np.min(clearance))
     route_inside = bool(np.all(clearance > 0.0))
-    stone_center = np.asarray((30.0, 15.0, 7.0))
+    stone_center = np.asarray((20.5, 9.0, 5.2))
     stone_idx = np.rint((stone_center - origin) / spacing).astype(int)
     stone_inside = bool(volume[tuple(stone_idx)])
 
@@ -407,7 +451,8 @@ def render_previews(preview_dir, meshes):
     views = []
     plotter = pv.Plotter(off_screen=True, window_size=(1600, 1200))
     plotter.set_background("#11141b")
-    plotter.add_mesh(meshes["KidneyExterior"], color="#b52d45", smooth_shading=True, lighting=False)
+    plotter.add_mesh(meshes["KidneyExterior"], color="#b52d45", smooth_shading=True, lighting=True,
+                     ambient=0.24, diffuse=0.74, specular=0.22, specular_power=28)
     add_orientation_widget(plotter)
     plotter.camera_position = [(175, -18, 220), (5, -4, 0), (0, 1, 0)]
     plotter.camera.clipping_range = (0.5, 1000.0)
@@ -417,7 +462,8 @@ def render_previews(preview_dir, meshes):
 
     plotter = pv.Plotter(off_screen=True, window_size=(1400, 1200))
     plotter.set_background("#11141b")
-    plotter.add_mesh(meshes["KidneyExterior"], color="#b52d45", smooth_shading=True, lighting=False)
+    plotter.add_mesh(meshes["KidneyExterior"], color="#b52d45", smooth_shading=True, lighting=True,
+                     ambient=0.24, diffuse=0.74, specular=0.22, specular_power=28)
     add_orientation_widget(plotter)
     plotter.camera_position = [(0, -4, 300), (5, -4, 0), (0, 1, 0)]
     plotter.camera.clipping_range = (0.5, 1000.0)
@@ -440,28 +486,44 @@ def render_previews(preview_dir, meshes):
 
     plotter = pv.Plotter(off_screen=True, window_size=(1600, 1200))
     plotter.set_background("#0f1218")
-    cutaway = meshes["CollectingSystemVisual"].clip(
-        normal=(0, 0, 1), origin=(0, 0, 1), invert=True
+    # Remove only the anterior half of the renal exterior.  The collecting
+    # system remains intact, making the anatomical relationship easy to judge.
+    cutaway = meshes["KidneyExterior"].clip(
+        normal=(0, 0, 1), origin=(0, 0, 0), invert=True
     )
-    plotter.add_mesh(cutaway, color="#ed5369", smooth_shading=True, lighting=False)
+    plotter.add_mesh(cutaway, color="#b52d45", opacity=0.72, smooth_shading=True, lighting=False)
+    plotter.add_mesh(meshes["CollectingSystemVisual"], color="#ed5369", smooth_shading=True, lighting=False)
     plotter.add_mesh(meshes["RouteGuide"], color="#00d9ff", smooth_shading=True, lighting=False)
     plotter.add_mesh(meshes["Stone"], color="#f0a324", smooth_shading=True, lighting=False)
     add_orientation_widget(plotter)
     plotter.camera_position = [(150, -18, 205), (-2, -7, 0), (0, 1, 0)]
     plotter.camera.clipping_range = (0.5, 1000.0)
-    path = preview_dir / "03_collecting_system_cutaway.png"
+    path = preview_dir / "03_kidney_cutaway.png"
     plotter.show(screenshot=str(path), auto_close=True)
     views.append(path)
 
     plotter = pv.Plotter(off_screen=True, window_size=(1600, 1200))
     plotter.set_background("#10131a")
-    plotter.add_mesh(meshes["CollectingSystemVisual"], color="#de4b61", opacity=0.28, smooth_shading=True, lighting=False)
+    plotter.add_mesh(meshes["CollectingSystemVisual"], color="#de4b61", opacity=0.88, smooth_shading=True, lighting=False)
     plotter.add_mesh(meshes["RouteGuide"], color="#00d9ff", smooth_shading=True, lighting=False)
     plotter.add_mesh(meshes["Stone"], color="#f4b13b", smooth_shading=True, lighting=False)
     add_orientation_widget(plotter)
     plotter.camera_position = [(135, -25, 205), (-7, -12, 0), (0, 1, 0)]
     plotter.camera.clipping_range = (0.5, 1000.0)
     path = preview_dir / "04_route_and_target.png"
+    plotter.show(screenshot=str(path), auto_close=True)
+    views.append(path)
+
+    # Direct view towards the papillary ends, used to verify that the minor
+    # calyces are concave cups rather than the spherical caps from v001.
+    plotter = pv.Plotter(off_screen=True, window_size=(1600, 1200))
+    plotter.set_background("#10131a")
+    plotter.add_mesh(meshes["CollectingSystemVisual"], color="#ed5369", smooth_shading=True,
+                     lighting=True, ambient=0.28, diffuse=0.72, specular=0.18, specular_power=24)
+    add_orientation_widget(plotter)
+    plotter.camera_position = [(230, -2, 5), (0, -5, 0), (0, 1, 0)]
+    plotter.camera.clipping_range = (0.5, 1000.0)
+    path = preview_dir / "05_calyx_cups.png"
     plotter.show(screenshot=str(path), auto_close=True)
     views.append(path)
     return views
@@ -479,12 +541,12 @@ def write_documentation(root, validation):
     docs = root / "Documentation"
     docs.mkdir(parents=True, exist_ok=True)
     (docs / "model_spec.md").write_text(
-        "# Kidney Game v001\n\n"
+        f"# Kidney Game {VERSION}\n\n"
         "Modelo anatômico orientado ao jogo, não reconstruído de um paciente.\n\n"
         "## Conteúdo\n\n"
         "- Exterior renal fechado com hilo e ureter curto.\n"
-        "- Pelve renal e grupos calicinais superior, médio e inferior.\n"
-        "- Nove cálices terminais e ramificações secundárias.\n"
+        "- Pelve renal afunilada e grupos calicinais superior, médio e inferior.\n"
+        "- Nove cálices menores alargados, com impressão papilar côncava.\n"
         "- Rota fixa até o cálice médio, cálculo irregular e âncoras de jogo.\n"
         "- Malha de colisão simplificada com faces orientadas para o lúmen.\n\n"
         "O lado anatômico permanece `lado a confirmar`.\n",
@@ -503,10 +565,11 @@ def write_documentation(root, validation):
     )
     (docs / "changelog.md").write_text(
         "# Alterações\n\n"
-        "## v001\n\n"
-        "- Substituído o blockout de elipsoides e cápsulas.\n"
-        "- Criado arquivo-mestre Maya editável e FBX autoritativo.\n"
-        "- Adicionados nove terminais calicinais, rota, pedra e âncoras.\n"
+        f"## {VERSION}\n\n"
+        "- Remodelado o sistema coletor para remover terminações esféricas.\n"
+        "- Pelve, infundíbulos e cálices passaram a ter transições afuniladas.\n"
+        "- Adicionadas terminações calicinais em forma de taça com impressão papilar.\n"
+        "- Exterior passa a abrir opaco no Maya para não aparentar estar incompleto.\n"
         "- Separadas as malhas visual e de colisão interna.\n"
         "- Eliminada a cópia física ampliada; o aumento 5× passa a pertencer ao Unity.\n",
         encoding="utf-8",
@@ -543,7 +606,7 @@ def write_manifest(path, fbx_path, validation):
         "project": "Navegacao Renal 3D",
         "model": MODEL_NAME,
         "version": VERSION,
-        "status": "game-complete anatomical model; not clinically validated",
+        "status": "Marco 1 candidate; visual approval pending; not clinically validated",
         "laterality": "lado a confirmar",
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "coordinate_system": "Y-up",
@@ -553,8 +616,8 @@ def write_manifest(path, fbx_path, validation):
         "gameplay_visual_scale": GAMEPLAY_SCALE,
         "tip_radius_mm": TIP_RADIUS_MM,
         "stone_nominal_diameter_mm": STONE_DIAMETER_MM,
-        "start_anchor_mm": [-43.0, -86.0, -4.0],
-        "target_anchor_mm": [30.0, 15.0, 7.0],
+        "start_anchor_mm": [-43.0, -88.0, -3.0],
+        "target_anchor_mm": [20.5, 9.0, 5.2],
         "required_nodes": [
             "KidneyExterior",
             "CollectingSystemVisual",
@@ -594,7 +657,7 @@ def main():
     for directory in (source_dir, exports_dir, obj_dir, preview_dir, archive_dir, unity_models):
         directory.mkdir(parents=True, exist_ok=True)
 
-    print("Building v001 geometry...")
+    print(f"Building {VERSION} geometry...")
     meshes, build_data = build_geometry()
     validation = validate_geometry(meshes, build_data)
     if not validation["passed"]:
@@ -611,7 +674,7 @@ def main():
     # Maya's standalone Python on Windows can misdecode non-ASCII command-line
     # paths. Build in an ASCII-only temporary directory, then copy the
     # self-contained .ma and FBX back to the requested accented OneDrive path.
-    with tempfile.TemporaryDirectory(prefix="kidney_v001_") as temp_name:
+    with tempfile.TemporaryDirectory(prefix=f"kidney_{VERSION}_") as temp_name:
         temp_root = Path(temp_name)
         temp_obj = temp_root / "obj"
         temp_obj.mkdir()

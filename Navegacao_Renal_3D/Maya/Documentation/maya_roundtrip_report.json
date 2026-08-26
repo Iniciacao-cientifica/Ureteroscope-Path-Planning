@@ -4,8 +4,8 @@
   "world_bounds_match": true,
   "physical_scale_pass": true,
   "measurements_cm": {
-    "kidney_exterior_height": 14.8467,
-    "collecting_system_with_ureter_height": 15.3783,
+    "kidney_exterior_height": 15.0615,
+    "collecting_system_with_ureter_height": 14.509,
     "stone_dimensions": [
       0.6508,
       0.6949,
@@ -17,76 +17,76 @@
     "missing_nodes": [],
     "meshes": {
       "KidneyExterior": {
-        "vertices": 58192,
-        "triangles": 116380,
+        "vertices": 56312,
+        "triangles": 112620,
         "bounds_cm": [
-          -3.854,
-          -7.5148,
-          -2.775,
-          5.765,
-          7.3319,
-          3.075
+          -3.5176,
+          -7.6205,
+          -2.791,
+          5.7801,
+          7.441,
+          2.8185
         ]
       },
       "CollectingSystemVisual": {
-        "vertices": 27214,
-        "triangles": 54424,
+        "vertices": 26506,
+        "triangles": 53048,
         "bounds_cm": [
-          -4.757,
-          -9.2208,
-          -1.7836,
-          3.6926,
-          6.1575,
-          2.0806
+          -4.7424,
+          -9.511,
+          -1.8621,
+          3.2341,
+          4.998,
+          2.0542
         ]
       },
       "CollectingSystemCollision_Inward": {
-        "vertices": 6532,
-        "triangles": 13060,
+        "vertices": 14570,
+        "triangles": 29176,
         "bounds_cm": [
-          -4.7536,
-          -9.2186,
-          -1.7822,
-          3.6898,
-          6.1575,
-          2.0786
+          -4.7424,
+          -9.511,
+          -1.8621,
+          3.2341,
+          4.998,
+          2.0542
         ]
       },
       "RouteGuide": {
         "vertices": 4320,
         "triangles": 8636,
         "bounds_cm": [
-          -4.3847,
-          -8.608,
-          -0.4849,
-          2.78,
-          1.5305,
-          0.7329
+          -4.3843,
+          -8.8036,
+          -0.3882,
+          2.0794,
+          0.9815,
+          0.5993
         ]
       },
       "Stone": {
         "vertices": 2562,
         "triangles": 5120,
         "bounds_cm": [
-          2.693,
-          1.1454,
-          0.3625,
-          3.3438,
-          1.8403,
-          1.0216
+          1.743,
+          0.5454,
+          0.1825,
+          2.3938,
+          1.2403,
+          0.8416
         ]
       }
     },
     "anchors_cm": {
       "StartAnchor": [
         -4.3,
-        -8.6,
-        -0.4
+        -8.8,
+        -0.3
       ],
       "TargetAnchor": [
-        3.0,
-        1.5,
-        0.7
+        2.05,
+        0.9,
+        0.52
       ],
       "MinimapAnchor": [
         15.5,
@@ -101,76 +101,76 @@
     "missing_nodes": [],
     "meshes": {
       "KidneyExterior": {
-        "vertices": 58192,
-        "triangles": 116380,
+        "vertices": 56312,
+        "triangles": 112620,
         "bounds_cm": [
-          -3.854,
-          -7.5148,
-          -2.775,
-          5.765,
-          7.3319,
-          3.075
+          -3.5176,
+          -7.6205,
+          -2.791,
+          5.7801,
+          7.441,
+          2.8185
         ]
       },
       "CollectingSystemVisual": {
-        "vertices": 27214,
-        "triangles": 54424,
+        "vertices": 26506,
+        "triangles": 53048,
         "bounds_cm": [
-          -4.757,
-          -9.2208,
-          -1.7836,
-          3.6926,
-          6.1575,
-          2.0806
+          -4.7424,
+          -9.511,
+          -1.8621,
+          3.2341,
+          4.998,
+          2.0542
         ]
       },
       "CollectingSystemCollision_Inward": {
-        "vertices": 6532,
-        "triangles": 13060,
+        "vertices": 14570,
+        "triangles": 29176,
         "bounds_cm": [
-          -4.7536,
-          -9.2186,
-          -1.7822,
-          3.6898,
-          6.1575,
-          2.0786
+          -4.7424,
+          -9.511,
+          -1.8621,
+          3.2341,
+          4.998,
+          2.0542
         ]
       },
       "RouteGuide": {
         "vertices": 4320,
         "triangles": 8636,
         "bounds_cm": [
-          -4.3847,
-          -8.608,
-          -0.4849,
-          2.78,
-          1.5305,
-          0.7329
+          -4.3843,
+          -8.8036,
+          -0.3882,
+          2.0794,
+          0.9815,
+          0.5993
         ]
       },
       "Stone": {
         "vertices": 2562,
         "triangles": 5120,
         "bounds_cm": [
-          2.693,
-          1.1454,
-          0.3625,
-          3.3438,
-          1.8403,
-          1.0216
+          1.743,
+          0.5454,
+          0.1825,
+          2.3938,
+          1.2403,
+          0.8416
         ]
       }
     },
     "anchors_cm": {
       "StartAnchor": [
         -4.3,
-        -8.6,
-        -0.4
+        -8.8,
+        -0.3
       ],
       "TargetAnchor": [
-        3.0,
-        1.5,
-        0.7
+        2.05,
+        0.9,
+        0.52
       ],
       "MinimapAnchor": [
         15.5,

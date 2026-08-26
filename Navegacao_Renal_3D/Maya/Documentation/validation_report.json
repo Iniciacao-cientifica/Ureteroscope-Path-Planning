@@ -3,7 +3,7 @@
   "checks": {
     "all_meshes_closed_and_manifold": true,
     "route_fully_inside_collecting_system": true,
-    "route_minimum_centerline_clearance_mm": 3.818,
+    "route_minimum_centerline_clearance_mm": 3.711,
     "required_clearance_mm": 2.5,
     "route_clearance_pass": true,
     "stone_center_inside_target_calyx": true,
@@ -11,42 +11,42 @@
   },
   "meshes": {
     "KidneyExterior": {
-      "vertices": 58192,
-      "triangles": 116380,
+      "vertices": 56312,
+      "triangles": 112620,
       "open_or_nonmanifold_edge_cells": 0,
       "bounds_mm": [
-        -38.54,
-        57.65,
-        -75.148,
-        73.319,
-        -27.75,
-        30.75
+        -35.176,
+        57.801,
+        -76.205,
+        74.41,
+        -27.91,
+        28.185
       ]
     },
     "CollectingSystemVisual": {
-      "vertices": 27214,
-      "triangles": 54424,
+      "vertices": 26506,
+      "triangles": 53048,
       "open_or_nonmanifold_edge_cells": 0,
       "bounds_mm": [
-        -47.57,
-        36.926,
-        -92.208,
-        61.575,
-        -17.836,
-        20.806
+        -47.424,
+        32.341,
+        -95.11,
+        49.98,
+        -18.621,
+        20.542
       ]
     },
     "CollectingSystemCollision_Inward": {
-      "vertices": 6532,
-      "triangles": 13060,
+      "vertices": 14570,
+      "triangles": 29176,
       "open_or_nonmanifold_edge_cells": 0,
       "bounds_mm": [
-        -47.536,
-        36.898,
-        -92.186,
-        61.575,
-        -17.822,
-        20.786
+        -47.424,
+        32.341,
+        -95.11,
+        49.98,
+        -18.621,
+        20.542
       ]
     },
     "RouteGuide": {
@@ -54,12 +54,12 @@
       "triangles": 8636,
       "open_or_nonmanifold_edge_cells": 0,
       "bounds_mm": [
-        -43.847,
-        27.8,
-        -86.08,
-        15.305,
-        -4.849,
-        7.329
+        -43.843,
+        20.794,
+        -88.036,
+        9.815,
+        -3.882,
+        5.993
       ]
     },
     "Stone": {
@@ -67,12 +67,12 @@
       "triangles": 5120,
       "open_or_nonmanifold_edge_cells": 0,
       "bounds_mm": [
-        26.93,
-        33.438,
-        11.454,
-        18.403,
-        3.625,
-        10.216
+        17.43,
+        23.938,
+        5.454,
+        12.403,
+        1.825,
+        8.416
       ]
     }
   }

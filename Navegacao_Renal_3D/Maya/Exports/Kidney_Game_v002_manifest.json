@@ -1,0 +1,116 @@
+{
+  "project": "Navegacao Renal 3D",
+  "model": "Kidney_Game_v002",
+  "version": "v002",
+  "status": "Marco 1 candidate; visual approval pending; not clinically validated",
+  "laterality": "lado a confirmar",
+  "generated_utc": "2026-08-26T08:40:07.285219+00:00",
+  "coordinate_system": "Y-up",
+  "maya_units": "centimetres",
+  "unity_units": "metres",
+  "unity_import_scale_cm_to_m": 0.01,
+  "gameplay_visual_scale": 5.0,
+  "tip_radius_mm": 2.0,
+  "stone_nominal_diameter_mm": 6.0,
+  "start_anchor_mm": [
+    -43.0,
+    -88.0,
+    -3.0
+  ],
+  "target_anchor_mm": [
+    20.5,
+    9.0,
+    5.2
+  ],
+  "required_nodes": [
+    "KidneyExterior",
+    "CollectingSystemVisual",
+    "CollectingSystemCollision_Inward",
+    "RouteGuide",
+    "Stone",
+    "StartAnchor",
+    "TargetAnchor",
+    "MinimapAnchor"
+  ],
+  "fbx_file": "Kidney_Game_v002.fbx",
+  "fbx_sha256": "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c",
+  "validation": {
+    "passed": true,
+    "checks": {
+      "all_meshes_closed_and_manifold": true,
+      "route_fully_inside_collecting_system": true,
+      "route_minimum_centerline_clearance_mm": 3.711,
+      "required_clearance_mm": 2.5,
+      "route_clearance_pass": true,
+      "stone_center_inside_target_calyx": true,
+      "source_is_real_scale": true
+    },
+    "meshes": {
+      "KidneyExterior": {
+        "vertices": 56312,
+        "triangles": 112620,
+        "open_or_nonmanifold_edge_cells": 0,
+        "bounds_mm": [
+          -35.176,
+          57.801,
+          -76.205,
+          74.41,
+          -27.91,
+          28.185
+        ]
+      },
+      "CollectingSystemVisual": {
+        "vertices": 26506,
+        "triangles": 53048,
+        "open_or_nonmanifold_edge_cells": 0,
+        "bounds_mm": [
+          -47.424,
+          32.341,
+          -95.11,
+          49.98,
+          -18.621,
+          20.542
+        ]
+      },
+      "CollectingSystemCollision_Inward": {
+        "vertices": 14570,
+        "triangles": 29176,
+        "open_or_nonmanifold_edge_cells": 0,
+        "bounds_mm": [
+          -47.424,
+          32.341,
+          -95.11,
+          49.98,
+          -18.621,
+          20.542
+        ]
+      },
+      "RouteGuide": {
+        "vertices": 4320,
+        "triangles": 8636,
+        "open_or_nonmanifold_edge_cells": 0,
+        "bounds_mm": [
+          -43.843,
+          20.794,
+          -88.036,
+          9.815,
+          -3.882,
+          5.993
+        ]
+      },
+      "Stone": {
+        "vertices": 2562,
+        "triangles": 5120,
+        "open_or_nonmanifold_edge_cells": 0,
+        "bounds_mm": [
+          17.43,
+          23.938,
+          5.454,
+          12.403,
+          1.825,
+          8.416
+        ]
+      }
+    }
+  }
+}

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import maya.standalone
@@ -88,19 +90,29 @@ def main():
     args = parser.parse_args()
     load_fbx_plugin()
 
-    cmds.file(str(args.source_ma).replace("\\", "/"), open=True, force=True, ignoreVersion=True)
-    source = inspect_scene("maya_master")
-    cmds.file(new=True, force=True)
-    cmds.currentUnit(linear="cm")
-    cmds.file(
-        str(args.fbx).replace("\\", "/"),
-        i=True,
-        type="FBX",
-        ignoreVersion=True,
-        mergeNamespacesOnClash=False,
-        options="fbx",
-    )
-    fbx = inspect_scene("fbx_round_trip")
+    # Maya standalone on Windows may decode accented command-line paths using
+    # the legacy code page. Stage both files under an ASCII-only temporary path
+    # before opening them, while keeping the report at the requested location.
+    with tempfile.TemporaryDirectory(prefix="kidney_validate_") as temp_name:
+        temp_root = Path(temp_name)
+        staged_ma = temp_root / "Kidney_Master.ma"
+        staged_fbx = temp_root / "Kidney_Game.fbx"
+        shutil.copy2(args.source_ma, staged_ma)
+        shutil.copy2(args.fbx, staged_fbx)
+
+        cmds.file(str(staged_ma).replace("\\", "/"), open=True, force=True, ignoreVersion=True)
+        source = inspect_scene("maya_master")
+        cmds.file(new=True, force=True)
+        cmds.currentUnit(linear="cm")
+        cmds.file(
+            str(staged_fbx).replace("\\", "/"),
+            i=True,
+            type="FBX",
+            ignoreVersion=True,
+            mergeNamespacesOnClash=False,
+            options="fbx",
+        )
+        fbx = inspect_scene("fbx_round_trip")
 
     counts_match = all(
         source["meshes"].get(name, {}).get("triangles")

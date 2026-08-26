@@ -117,7 +117,7 @@ def main():
 
     cmds.file(new=True, force=True)
     cmds.currentUnit(linear="cm", angle="deg", time="film")
-    root = cmds.group(empty=True, name="Kidney_Game_v001_ROOT")
+    root = cmds.group(empty=True, name=f"Kidney_Game_{args.version}_ROOT")
     visual_group = cmds.group(empty=True, name="VISUAL", parent=root)
     gameplay_group = cmds.group(empty=True, name="GAMEPLAY", parent=root)
     anchor_group = cmds.group(empty=True, name="ANCHORS", parent=root)
@@ -133,8 +133,8 @@ def main():
     cmds.parent(objects["Stone"], gameplay_group)
 
     materials = {
-        "KidneyExterior": create_standard_material("MAT_KidneyExterior", (0.48, 0.055, 0.095), 0.34),
-        "CollectingSystemVisual": create_standard_material("MAT_CollectingSystem", (0.83, 0.22, 0.31)),
+        "KidneyExterior": create_standard_material("MAT_KidneyExterior", (0.48, 0.055, 0.095), 1.0),
+        "CollectingSystemVisual": create_standard_material("MAT_CollectingSystem", (0.93, 0.33, 0.42)),
         "CollectingSystemCollision_Inward": create_standard_material("MAT_CollisionDebug", (0.06, 0.64, 0.86), 0.18),
         "RouteGuide": create_standard_material("MAT_RouteCyan", (0.0, 0.78, 1.0), emission=(0.0, 0.55, 0.8)),
         "Stone": create_standard_material("MAT_StoneGold", (0.92, 0.56, 0.08)),
@@ -157,8 +157,8 @@ def main():
         except RuntimeError:
             pass
 
-    start = create_locator("StartAnchor", (-4.3, -8.6, -0.4), (-4.2, -7.2, -0.33), 0.6)
-    target = create_locator("TargetAnchor", (3.0, 1.5, 0.7), (2.1, 1.25, 0.5), 0.5)
+    start = create_locator("StartAnchor", (-4.3, -8.8, -0.3), (-4.2, -7.2, -0.3), 0.6)
+    target = create_locator("TargetAnchor", (2.05, 0.9, 0.52), (1.4, 0.78, 0.3), 0.5)
     minimap = create_locator("MinimapAnchor", (15.5, -14.0, 11.0), (0.0, -0.4, 0.0), 0.7)
     cmds.parent(start, target, minimap, anchor_group)
 
@@ -175,6 +175,8 @@ def main():
     cmds.setAttr(f"{collision_layer}.visibility", False)
     route_layer = cmds.createDisplayLayer(objects["RouteGuide"], name="ROUTE_GUIDE", number=2)
     cmds.setAttr(f"{route_layer}.displayType", 0)
+    exterior_layer = cmds.createDisplayLayer(objects["KidneyExterior"], name="EXTERIOR_SOLID", number=3)
+    collecting_layer = cmds.createDisplayLayer(objects["CollectingSystemVisual"], name="COLLECTING_SYSTEM", number=4)
 
     cmds.select(root, hierarchy=True)
     cmds.delete(constructionHistory=True)

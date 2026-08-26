@@ -1,0 +1,481 @@
+# Contexto da conversa — Identificar navegação em Python
+
+Última atualização: 26 de agosto de 2026
+Conversa Codex: `01a0398f-fbb5-7a40-a640-68e7e5a9d9cc`
+Repositório: `Ureteroscope-Path-Planning`
+Branch de desenvolvimento do zero: `DoZero`
+
+## Finalidade deste documento
+
+Este arquivo preserva as decisões da conversa que transformou o visualizador
+Python existente em um plano para o jogo/protótipo acadêmico **Navegação Renal
+3D**. Ele deve ser consultado antes de alterar modelo, Unity, controles ou
+integração física.
+
+O texto registra:
+
+- as 57 perguntas de definição e as respostas dadas;
+- correções e decisões que substituíram respostas anteriores;
+- o escopo atual do modelo renal;
+- os dois modos de jogo;
+- os caminhos oficiais dos artefatos Maya e Unity;
+- o estado dos marcos;
+- as necessidades futuras de ESP32, MPU6050, encoder e garra.
+
+Quando houver conflito, a seção **Decisões vigentes** prevalece sobre respostas
+antigas do questionário.
+
+## Origem: navegação existente em Python
+
+A conversa começou com a pergunta: **“sabe me dizer o que é usado no código de
+python para criar aquela navegação?”**
+
+O projeto Python existente utiliza três partes distintas:
+
+- `path_planning.py`: cálculo da rota em voxels com algoritmo A* e campo de
+  repulsão das paredes;
+- `main.py`: suavização da rota por B-Spline, Savitzky–Golay e técnicas
+  laplacianas;
+- `view.py`: visualização/animação da câmera com PyVista, baseado em VTK, e
+  NumPy para posição e orientação.
+
+Essa animação Python não é o jogo. No novo projeto, a rota é fixa e será um
+asset do Unity; não haverá A* durante a partida.
+
+## Objetivo consolidado
+
+Criar do zero um jogo sério para Windows, inicialmente controlado por mouse e
+teclado, com um percurso renal fixo até uma pedra. A arquitetura deverá aceitar
+hardware posteriormente sem reescrever a jogabilidade.
+
+O projeto sempre usa:
+
+- a mesma anatomia;
+- o mesmo rim ativo e sistema coletor navegável;
+- o mesmo ponto inicial no ureter;
+- a mesma rota;
+- a mesma pedra em um cálice médio;
+- apenas o nível fácil nesta primeira versão.
+
+O produto é acadêmico/educacional. Não é dispositivo médico, reconstrução de
+paciente ou anatomia clinicamente validada.
+
+## Questionário completo — perguntas 1 a 57
+
+### Rodada 1 — plataforma, anatomia e derrota
+
+1. **Onde deve funcionar primeiro?**
+   Resposta: **A — Windows com ESP32 por USB.** Depois o hardware foi adiado;
+   Windows continua sendo a plataforma inicial.
+
+2. **Qual representação anatômica você quer?**
+   Resposta: **A — Rim externo e sistema coletor separados.**
+
+3. **Como deve funcionar a derrota por colisões?**
+   Resposta: **A — Limite configurável, começando em cinco colisões.**
+
+### Rodada 2 — controle físico e visualização
+
+4. **Qual é o estado atual do controle físico?**
+   Resposta: **B — Já existem ESP32 e MPU, mas ainda não há haste com encoder.**
+
+5. **Quando você fala em “garra”, o que exatamente deseja controlar?**
+   Resposta livre: segurar um botão para a garra pegar a pedra. A intenção final
+   é existir uma pedrinha real. Isso corresponde a abrir/fechar uma pinça; a
+   articulação distal não foi exigida nesta etapa.
+
+6. **Como você imagina a visualização durante a partida?**
+   Resposta: **B — Visão interna com minimapa externo.**
+
+### Rodada 3 — pedra física e destino de visualização
+
+7. **O que você imagina por “pedrinha real”?**
+   Resposta: **A — Pedra física dentro de um rim físico, capturada por garra
+   física.** Requisito futuro, depois do protótipo com mouse.
+
+8. **Quando o jogador captura a pedra, quando deve ganhar?**
+   Resposta: **A — Imediatamente ao fechar a garra corretamente sobre a pedra.**
+
+9. **Qual é o objetivo final de visualização?**
+   Resposta: **B — Windows e Meta Quest conectado por Link/Air Link.** A primeira
+   versão permanece somente desktop.
+
+### Rodada 4 — mecânica física, suspensa
+
+10. **Como deve ser a haste do instrumento?**
+    Não respondida. A discussão de hardware foi suspensa para começar o Unity
+    do zero com mouse e teclado.
+
+11. **Como o botão deve fechar a garra física?**
+    Não respondida. A sugestão registrada foi servo na empunhadura puxando um
+    cabo, mas isso não é decisão final.
+
+12. **Como o jogo deve confirmar que a pedra foi realmente capturada?**
+    Não respondida. Sensores físicos permanecem para uma fase futura.
+
+### Rodada 5 — novo Unity e controles provisórios
+
+13. **Como começaremos o projeto?**
+    Resposta: **A — Projeto Unity 6 URP completamente novo e separado.** Não
+    reutilizar o Unity antigo como base.
+
+14. **Como será o controle no modo realista?**
+    Resposta: **A — Mouse orienta e W/S avança ou recua.**
+
+15. **Como será o controle no modo exploração?**
+    Resposta: **B — Câmera livre com WASD, mouse e Q/E para subir/descer.**
+
+### Rodada 6 — anatomia e apresentação
+
+16. **Qual material anatômico utilizaremos inicialmente?**
+    A resposta foi substituída por uma pergunta do usuário: criar um rim do zero
+    ou adaptar um pronto. A decisão posterior, na pergunta 34, foi criar todo o
+    modelo do zero para o jogo.
+
+17. **Qual estilo visual você deseja?**
+    Resposta: **B — Realista, mas com elementos de jogo.**
+
+18. **Como deseja o minimapa no modo realista?**
+    Resposta: **A — Pequeno no canto superior direito.**
+
+### Rodada 7 — exterior, dificuldade e captura
+
+19. **Como o rim exterior deve aparecer no modo exploração?**
+    Resposta: **B — Sempre semitransparente.** A cena deverá também oferecer
+    controles para mostrar, ocultar ou revisar o exterior.
+
+20. **Como a rota deve aparecer no modo realista?**
+    Resposta original: **B — Três dificuldades.** Decisão posterior vigente:
+    somente o nível fácil, com rota ciano visível.
+
+21. **Como funcionará a captura provisória, antes da garra física?**
+    Resposta: **A — Encostar na pedra e pressionar Espaço.**
+
+### Rodada 8 — parede, feedback e iluminação
+
+22. **O que deve acontecer fisicamente ao tocar a parede no modo realista?**
+    O usuário respondeu C, mas explicou que não queria recuo, tela preta nem
+    visão do lado de fora. Decisão final registrada: **A — Movimento bloqueado
+    exatamente antes da parede, mantendo rotação e recuo disponíveis.**
+
+23. **Qual feedback deve aparecer em uma colisão?**
+    Resposta: **C — Flash visual e contador, sem som.**
+
+24. **Como deseja a iluminação interna?**
+    Resposta: **B — Interior inteiro claramente iluminado.** Depois foi refinado
+    para luz ambiente clara mais luz suave na ponta.
+
+### Rodada 9 — menu, rota e derrota
+
+25. **Como deve ser a tela inicial?**
+    Resposta: **A — Dois botões grandes: Modo realista e Exploração livre.**
+
+26. **Como deseja visualizar a rota no nível fácil?**
+    Resposta: **A — Linha azul/ciano contínua e luminosa.**
+
+27. **O que acontece ao atingir cinco colisões?**
+    Resposta: **A — Movimento congela e aparece “Tentativa encerrada”, com
+    Reiniciar e Voltar ao menu.**
+
+### Rodada 10 — tempo, minimapa e vitória
+
+28. **O modo realista terá cronômetro?**
+    Resposta: **B — O tempo é registrado, mas aparece apenas no final.**
+
+29. **Como será a câmera do minimapa?**
+    Resposta: **B — Vista 3D inclinada e fixa mostrando o rim inteiro.**
+
+30. **O que deve aparecer na tela de vitória?**
+    Resposta: **A — Tempo, colisões, Jogar novamente e Menu.**
+
+### Rodada 11 — escala e rotação
+
+31. **Qual escala devemos usar?**
+    Resposta original: **B — Rim aumentado.** Implementação consolidada: fonte
+    em escala física real e ampliação visual configurada em 5× no Unity.
+
+32. **Como controlar a rotação no modo realista?**
+    Resposta: **A — Mouse controla direção/inclinação e Q/E controla rotação
+    axial.**
+
+33. **Como controlar a velocidade de avanço?**
+    Resposta: **A — Velocidade fixa e lenta.**
+
+### Rodada 12 — criação do rim
+
+34. **Quanto do modelo devemos criar especificamente para o jogo?**
+    Resposta: **B — Exterior, pelve, cálices e ureter inteiramente do zero.**
+
+35. **Qual rim será representado?**
+    Resposta: **C — Manter o lado indicado pelos dados atuais.** Como os dados
+    não confirmam com segurança a lateralidade, o manifesto vigente registra
+    “lado a confirmar”.
+
+36. **Em qual região ficará a pedra?**
+    Resposta: **B — Cálice médio.**
+
+### Rodada 13 — complexidade e início
+
+37. **Qual complexidade deseja para os cálices?**
+    Resposta: **B — Moderada, com três regiões e ramificações menores.**
+
+38. **Onde começa a partida realista?**
+    Resposta: **B — Pequeno trecho de ureter antes do rim.**
+
+39. **Quanto aumentaremos a anatomia no jogo?**
+    Resposta: **A — Cinco vezes o tamanho real.**
+
+### Rodada 14 — dimensões de jogabilidade
+
+40. **Qual raio terá a ponta virtual?**
+    Resposta: **B — 2 mm.**
+
+41. **Qual deverá ser a largura mínima das passagens?**
+    Resposta: **B — Aproximadamente 8 mm.**
+
+42. **Como será a pedra?**
+    Resposta: **A — Irregular, amarelada e com aproximadamente 6 mm.**
+
+### Rodada 15 — aparência interna
+
+43. **Como devem ser as paredes internas?**
+    Resposta: **A — Rosa-avermelhadas, úmidas e com textura discreta.**
+
+44. **Como iluminaremos o interior inteiro sem deixar a imagem plana?**
+    Resposta: **A — Luz ambiente clara mais luz suave na ponta.**
+
+45. **Qual campo de visão da câmera interna?**
+    Resposta: **B — 80 graus.**
+
+### Rodada 16 — sensação de controle
+
+46. **Qual velocidade fixa de avanço e recuo?**
+    Resposta: **B — 20 mm/s na escala física.**
+
+47. **Como funcionará a sensibilidade do mouse?**
+    Resposta: **B — Controle deslizante no menu de pausa.**
+
+48. **Como a ponta responderá ao movimento do mouse?**
+    Resposta: **B — Suavização moderada.**
+
+### Rodada 17 — exploração, pausa e dados
+
+49. **O que aparece no modo exploração?**
+    Resposta: **A — Exterior, sistema coletor, rota e pedra, com controles de
+    visibilidade individuais.**
+
+50. **Quais opções devem existir no menu de pausa?**
+    Resposta: **A — Continuar, sensibilidade, reiniciar, menu principal e sair.**
+
+51. **Devemos salvar os resultados?**
+    Resposta: **A — Não salvar.**
+
+### Rodada 18 — janela, feedback e áudio
+
+52. **Como o jogo deve abrir no Windows?**
+    Resposta: **B — Janela redimensionável.**
+
+53. **Como será o flash de colisão?**
+    Resposta: **A — Borda vermelha semitransparente por cerca de 0,4 segundo.**
+
+54. **O jogo terá sons?**
+    Resposta: **B — Somente interface, vitória e derrota; sem som de colisão e
+    sem música.**
+
+### Rodada 19 — idioma, nome e ordem
+
+55. **Qual será o idioma da interface?**
+    Resposta: **A — Português.**
+
+56. **Qual nome provisório deseja para o projeto?**
+    Resposta: **A — Navegação Renal 3D.**
+
+57. **Em qual ordem você deseja que o projeto seja construído?**
+    Resposta: **A — Protótipo funcional simples e depois melhoria visual.** A
+    execução foi deliberadamente ajustada depois: o usuário exigiu a correção e
+    aprovação do modelo renal antes da fundação definitiva no Unity.
+
+## Decisões vigentes
+
+### Modelo renal
+
+“Rim completo” significa completo para o jogo:
+
+- exterior renal fechado e convincente;
+- hilo;
+- ureter curto;
+- pelve em funil;
+- sistema coletor contínuo e navegável;
+- grupos superior, médio e inferior;
+- nove cálices menores em forma de taça, com impressão papilar côncava;
+- rota fixa;
+- pedra no cálice médio;
+- malhas visual e de colisão separadas.
+
+Não são necessários nesta versão: córtex detalhado, medula, pirâmides, artéria,
+veia ou microanatomia. Esses itens não devem ser adicionados silenciosamente.
+
+### Dois rins, ureteres e bexiga
+
+A cena global deverá possuir dois rins, dois ureteres e bexiga. Um rim será o
+rim ativo detalhado e navegável. O outro poderá inicialmente reutilizar uma
+cópia espelhada/ajustada do exterior aprovado. No modo realista, o jogador
+permanece dentro do ureter/sistema coletor do rim ativo. No modo exploração,
+deve ser possível sair, observar os dois rins, ureteres e bexiga e entrar/sair
+livremente das malhas.
+
+Essa montagem pertence à fundação/ambientação da cena Unity e não altera a
+geometria autoritativa do rim ativo.
+
+### Modo realista
+
+- Mouse: direção e inclinação.
+- Q/E: rotação axial.
+- W/S: avanço e recuo a 20 mm/s físicos.
+- Espaço: captura provisória da pedra.
+- R: reiniciar.
+- Esc: pausa.
+- SphereCast/subpassos devem impedir atravessamento.
+- Ao tocar a parede, parar antes dela; ainda permitir girar e recuar.
+- A câmera não pode mostrar a parte externa nem ficar preta.
+- Novo episódio de contato conta uma colisão; contato contínuo conta uma vez.
+- Cinco colisões encerram a tentativa.
+- Rota ciano sempre visível no nível fácil.
+- Cronômetro oculto durante a partida e exibido na vitória.
+
+### Exploração livre
+
+- Mouse + WASD para olhar/mover.
+- Q/E para descer/subir.
+- Shift acelera.
+- F recentraliza no conjunto urinário.
+- Pode atravessar paredes e entrar/sair dos rins.
+- Sem colisão, derrota, tempo ou pontuação.
+- Visibilidade individual de exterior, sistema coletor, rota e pedra.
+
+### Hardware futuro
+
+O MPU6050 sozinho não mede avanço/recuo de maneira estável. A arquitetura
+futura prevista é:
+
+```text
+MPU6050 -> orientação
+encoder -> inserção e retirada em milímetros
+botão -> comando da garra
+ESP32-S3 -> protocolo USB com o Windows
+garra física -> captura da pedra real
+Meta Quest -> visualização via Link depois do desktop
+```
+
+Nenhum hardware deve ser implementado antes da versão com mouse estar
+aprovada. A entrada do jogo deve depender de uma abstração como
+`IInstrumentInputSource`, permitindo trocar teclado/mouse por ESP32.
+
+## Estado do Marco 1
+
+A primeira entrega `v001` passou em validações técnicas, mas foi rejeitada
+visualmente porque o exterior transparente parecia incompleto e o sistema
+coletor possuía aparência de tubos com bolas nas pontas.
+
+A correção `v002` foi gerada com:
+
+- exterior opaco no Maya;
+- pelve afunilada;
+- três grupos principais;
+- nove cálices menores côncavos;
+- colisão interna com faces voltadas para o lúmen;
+- rota e pedra atualizadas;
+- versão anterior preservada no histórico Git e no arquivo local do Maya.
+
+Validações finais da `v002`:
+
+- todas as malhas fechadas e manifold;
+- rota inteiramente dentro do sistema coletor;
+- folga mínima no centro da rota: `3,711 mm`;
+- folga exigida para a ponta: `2,5 mm`;
+- pedra dentro do cálice-alvo;
+- altura exterior no round-trip Maya/FBX: `15,0615 cm`;
+- contagens e limites idênticos entre Maya e FBX;
+- FBX Maya e FBX Unity com SHA-256 idêntico:
+  `174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c`.
+
+## Arquivos autoritativos locais
+
+Maya editável:
+
+`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Maya_v01\Source\Kidney_Master.ma`
+
+FBX exportado pelo Maya:
+
+`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Maya_v01\Exports\Kidney_Game_v002.fbx`
+
+Cópia validada para Unity:
+
+`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Unity\Assets\Art\Kidney\Models\Kidney_Game_v002.fbx`
+
+Relatórios e prévias:
+
+`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Maya_v01\Documentation`
+
+`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Maya_v01\Previews`
+
+## Marcos vigentes
+
+### Marco 1 — modelo renal
+
+Estado: `v002` gerada e validada tecnicamente. A aprovação visual do usuário é
+o aceite final. O modelo não deve ser chamado de clinicamente validado.
+
+### Marco 2 — fundação Unity e importação
+
+Próximo trabalho autorizado pelo usuário:
+
+- criar/confirmar projeto Unity 6 URP novo;
+- importar exatamente `Kidney_Game_v002.fbx`;
+- validar centímetros para metros e escala visual 5×;
+- criar estrutura de pastas, layers, Input Actions e cenas;
+- criar prefab estável do nível renal;
+- reconhecer automaticamente exterior, interior, collider, rota, pedra e
+  âncoras;
+- montar a base visual do sistema urinário com dois rins, ureteres e bexiga;
+- executar validações automáticas de nomes, escala, hash e referências;
+- não implementar ainda a navegação final.
+
+### Marco 3 — navegação realista
+
+Rig da ponta/câmera, mouse, W/S, Q/E, SphereCast, subpassos, bloqueio nas
+paredes, câmera interna e iluminação.
+
+### Marco 4 — gameplay
+
+Estados da partida, cinco colisões, flash vermelho, rota, captura, vitória,
+derrota, pausa e reinício.
+
+### Marco 5 — exploração e minimapa
+
+Câmera livre, entrada/saída das malhas, controles de visibilidade, conjunto com
+dois rins/ureteres/bexiga e minimapa inclinado.
+
+### Marco 6 — polimento e integração futura
+
+Materiais, interface, áudio, testes, build Windows e, somente depois da versão
+desktop aprovada, planejamento/implementação de ESP32, MPU, encoder, garra e
+Quest.
+
+## Restrições importantes
+
+- Não reutilizar o Unity antigo como base do novo jogo.
+- Não alterar o código científico antigo sem necessidade explícita.
+- Não executar A* durante o jogo.
+- Não usar NavMesh ou controlador FPS no modo realista.
+- Não criar múltiplos pacientes/casos nesta primeira versão.
+- Não permitir divergência entre a geometria Maya e Unity.
+- Não avançar um marco sem validação proporcional ao risco e registro do
+  resultado.
+- Preservar o trabalho antigo no histórico Git; não apagar versões de maneira
+  irrecuperável.
+
+## Próxima ação
+
+Registrar a correção `v002` e este contexto na branch `DoZero`, publicar a
+branch no remoto e então iniciar o Marco 2 em um commit separado.
