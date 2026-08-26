@@ -1,4 +1,4 @@
-# Navegação Renal 3D — Marco 2
+# Navegação Renal 3D — Marco 3
 
 Projeto desenvolvido do zero com modelo renal `v002` e protótipo navegável no Unity.
 
@@ -16,20 +16,26 @@ de topologia, escala e reimportação ficam em `Maya/Documentation`.
 O projeto Unity 6 URP está completo dentro de `Unity`. Abra a pasta pelo Unity
 Hub e execute `Assets/Scenes/MainMenu.unity` ou `Assets/Scenes/KidneyGame.unity`.
 
-O Marco 2 inclui:
+O projeto inclui a fundação do Marco 2 e a navegação realista do Marco 3:
 
-- modo Realista com mouse, movimento `W/S`, rota opcional e colisão interna;
+- modo Realista com mouse, movimento `W/S`, rota opcional e colisão interna por
+  `SphereCast`, sem `CharacterController`;
 - modo Exploração com câmera livre dentro e fora dos rins;
 - nível fácil, contador de cinco contatos e captura da pedra com Espaço;
 - dois rins, dois ureteres e bexiga na composição global;
-- minimapa provisório, materiais URP e iluminação da ponta;
+- acabamento vermelho orgânico no rim direito, nos ureteres e na bexiga, sem
+  alterar o visual já aprovado do rim ativo superior esquerdo;
+- textura interna original com base color e normal map, minimapa provisório,
+  materiais URP e iluminação da ponta;
 - prefab `KidneyLevel` com escala física preservada e raiz visual `5x`.
 
 O rim ativo usa `Unity/Assets/Art/Kidney/Models/Kidney_Game_v002.fbx`, cópia
 byte a byte do FBX do Maya. O segundo rim, os ureteres longos e a bexiga formam
-a base visual do cenário e ainda não são modelos anatômicos finais navegáveis.
+a composição visual externa; somente o rim ativo é navegável nesta etapa.
 
-Instruções, controles e limites do marco estão em `Unity/Documentation/MARCO_2.md`.
+Instruções, controles e validação atual estão em
+`Unity/Documentation/MARCO_3.md`. O Marco 2 permanece documentado em
+`Unity/Documentation/MARCO_2.md`.
 
 ## Pipeline
 

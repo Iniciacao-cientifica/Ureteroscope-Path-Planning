@@ -29,6 +29,9 @@ namespace NavegacaoRenal
         private float redFlashUntil;
 
         public bool CanNavigate => currentMode == KidneyGameMode.Realistic && !won && !lost && !paused;
+        public KidneyGameMode CurrentMode => currentMode;
+        public int WallContacts => wallContacts;
+        public bool IsPaused => paused;
 
         public void Configure(GameObject realRig, GameObject freeRig, Transform probeTransform, Transform start, Transform stone, GameObject route, GameObject minimap)
         {
@@ -56,7 +59,8 @@ namespace NavegacaoRenal
 
             if (Keyboard.current.f1Key.wasPressedThisFrame) SetMode(KidneyGameMode.Realistic);
             if (Keyboard.current.f2Key.wasPressedThisFrame) SetMode(KidneyGameMode.Exploration);
-            if (Keyboard.current.pKey.wasPressedThisFrame) paused = !paused;
+            if (Keyboard.current.pKey.wasPressedThisFrame)
+                SetPaused(!paused);
             if (Keyboard.current.rKey.wasPressedThisFrame) ResetAttempt();
             if (Keyboard.current.tKey.wasPressedThisFrame && routeGuide != null) routeGuide.SetActive(!routeGuide.activeSelf);
             if (Keyboard.current.mKey.wasPressedThisFrame && minimapCamera != null) minimapCamera.SetActive(!minimapCamera.activeSelf);
@@ -64,7 +68,10 @@ namespace NavegacaoRenal
             if (CanNavigate && Keyboard.current.spaceKey.wasPressedThisFrame && targetStone != null && probe != null)
             {
                 if (Vector3.Distance(probe.position, targetStone.position) <= captureDistance)
+                {
                     won = true;
+                    MouseEndoscopeController.ReleaseCursor();
+                }
             }
         }
 
@@ -74,6 +81,8 @@ namespace NavegacaoRenal
                 return;
 
             currentMode = mode;
+            if (mode == KidneyGameMode.Exploration)
+                MouseEndoscopeController.ReleaseCursor();
             if (realisticRig != null) realisticRig.SetActive(mode == KidneyGameMode.Realistic);
             if (explorationRig != null) explorationRig.SetActive(mode == KidneyGameMode.Exploration);
             if (mode == KidneyGameMode.Realistic) ResetProbePosition();
@@ -87,10 +96,20 @@ namespace NavegacaoRenal
             wallContacts++;
             redFlashUntil = Time.unscaledTime + 0.4f;
             if (wallContacts >= maximumWallContacts)
+            {
                 lost = true;
+                MouseEndoscopeController.ReleaseCursor();
+            }
         }
 
-        private void ResetAttempt()
+        public void SetPaused(bool value)
+        {
+            paused = value;
+            if (paused)
+                MouseEndoscopeController.ReleaseCursor();
+        }
+
+        public void ResetAttempt()
         {
             wallContacts = 0;
             won = false;
@@ -105,10 +124,15 @@ namespace NavegacaoRenal
             if (probe == null || startAnchor == null)
                 return;
 
-            CharacterController controller = probe.GetComponent<CharacterController>();
-            if (controller != null) controller.enabled = false;
-            probe.SetPositionAndRotation(startAnchor.position, startAnchor.rotation);
-            if (controller != null) controller.enabled = true;
+            MouseEndoscopeController controller = probe.GetComponent<MouseEndoscopeController>();
+            if (controller != null) controller.ResetTo(startAnchor);
+            else probe.SetPositionAndRotation(startAnchor.position, startAnchor.rotation);
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus)
+                MouseEndoscopeController.ReleaseCursor();
         }
 
         private void OnGUI()
@@ -124,7 +148,7 @@ namespace NavegacaoRenal
             if (GUI.Button(new Rect(34, 120, 155, 32), "F1 - Realista")) SetMode(KidneyGameMode.Realistic);
             if (GUI.Button(new Rect(205, 120, 170, 32), "F2 - Exploracao")) SetMode(KidneyGameMode.Exploration);
             GUI.Label(new Rect(34, 160, 340, 25), currentMode == KidneyGameMode.Realistic
-                ? "Mouse: direcao | W/S: mover | Q/E: girar | Espaco: pegar"
+                ? "Clique: capturar mouse | Esc: liberar | W/S: mover | Q/E: girar"
                 : "Botao direito + mouse | WASD/QE | Shift: acelerar");
             if (GUI.Button(new Rect(34, 192, 155, 30), "T - Mostrar rota"))
                 if (routeGuide != null) routeGuide.SetActive(!routeGuide.activeSelf);

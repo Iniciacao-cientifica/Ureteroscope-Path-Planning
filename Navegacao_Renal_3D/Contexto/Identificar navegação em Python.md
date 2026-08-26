@@ -334,13 +334,14 @@ geometria autoritativa do rim ativo.
 - W/S: avanço e recuo a 20 mm/s físicos.
 - Espaço: captura provisória da pedra.
 - R: reiniciar.
-- Esc: pausa.
+- P: pausa.
+- Esc: libera o cursor.
 - SphereCast/subpassos devem impedir atravessamento.
 - Ao tocar a parede, parar antes dela; ainda permitir girar e recuar.
 - A câmera não pode mostrar a parte externa nem ficar preta.
 - Novo episódio de contato conta uma colisão; contato contínuo conta uma vez.
 - Cinco colisões encerram a tentativa.
-- Rota ciano sempre visível no nível fácil.
+- Rota ciano opcional com T no nível fácil.
 - Cronômetro oculto durante a partida e exibido na vitória.
 
 ### Exploração livre
@@ -443,8 +444,30 @@ Estado: implementado e validado em Unity `6000.5.0f1`.
 
 ### Marco 3 — navegação realista
 
-Rig da ponta/câmera, mouse, W/S, Q/E, SphereCast, subpassos, bloqueio nas
-paredes, câmera interna e iluminação.
+Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
+
+- `MouseEndoscopeController` preservado para manter as referências da cena,
+  porém sem dependência de `CharacterController`;
+- ponta com raio de `0,010 m`, velocidade de `0,10 m/s`, subpassos máximos de
+  `0,005 m` e margem de `0,001 m`;
+- `SphereCast` restrito à camada `KidneyCollision`, com faces internas ativas;
+- bloqueio total do avanço na parede, mantendo rotação e recuo;
+- um toque por contato contínuo, rearmado a `0,015 m` sem parede;
+- mouse amortecido, limite de `70°/s`, suavização de `0,12 s` e Q/E a `55°/s`;
+- clique prende o cursor; Esc, pausa e Exploração liberam;
+- reset direto no `StartAnchor`, sem alternar componentes físicos;
+- equivalência de movimento validada automaticamente em 30, 60 e 120 FPS;
+- câmera interna FOV `80`, luz, rota T, minimapa M, captura Espaço e F1/F2
+  preservados;
+- FBX `Kidney_Game_v002` permanece byte a byte inalterado.
+- acabamento visual pendente concluído sem alterar o rim superior esquerdo:
+  rim direito fechado e vermelho, ureteres curvos suavizados, bexiga orgânica
+  com saída inferior e remoção dos materiais cinza provisórios;
+- textura interna original gerada para o projeto, importada como base color e
+  normal map em `Assets/Art/Textures/Organic`;
+- capturas automáticas externa e internas registradas em
+  `Unity/Documentation/Previews`;
+- relatório `marco3_validation.json` aprovado sem erros.
 
 ### Marco 4 — gameplay
 
@@ -477,6 +500,6 @@ Quest.
 
 ## Próxima ação
 
-Abrir o Marco 2 no Unity pelo projeto externo da Área de Trabalho, testar os
-dois modos com mouse e colher o aceite visual/funcional do usuário. Depois do
-aceite, refinar o controlador e as colisões no Marco 3 antes de integrar a garra.
+Planejar e implementar o gameplay final do Marco 4. Após o Marco 4, sincronizar
+no Maya o sistema completo com dois rins, ureteres e bexiga antes do Marco 5.
+ESP32, MPU, encoder e garra continuam fora desta etapa.

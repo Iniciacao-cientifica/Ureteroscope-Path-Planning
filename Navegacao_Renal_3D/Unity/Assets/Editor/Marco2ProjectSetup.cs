@@ -21,6 +21,8 @@ namespace NavegacaoRenal.Editor
         private const string MenuScenePath = "Assets/Scenes/MainMenu.unity";
         private const string PipelinePath = "Assets/Settings/NavegacaoRenal_URP.asset";
         private const string RendererPath = "Assets/Settings/NavegacaoRenal_Renderer.asset";
+        private const string MucosaBaseColorPath = "Assets/Art/Textures/Organic/T_RenalMucosa_BaseColor_v001.png";
+        private const string MucosaNormalPath = "Assets/Art/Textures/Organic/T_RenalMucosa_NormalSource_v001.png";
 
         private static readonly string[] RequiredNodes =
         {
@@ -34,19 +36,38 @@ namespace NavegacaoRenal.Editor
             Debug.Log("[Marco2] Iniciando configuracao do projeto.");
             EnsureFolders();
             ConfigureLayers();
+            Physics.queriesHitBackfaces = true;
             ConfigureModelImporter();
+            ConfigureOrganicTextureImporters();
             ConfigureRenderPipeline();
 
-            Material exterior = CreateOrUpdateMaterial("Assets/Materials/MAT_KidneyExterior_URP.mat", new Color(0.42f, 0.055f, 0.10f, 0.48f), true, false);
-            Material interior = CreateOrUpdateMaterial("Assets/Materials/MAT_CollectingSystem_URP.mat", new Color(0.90f, 0.12f, 0.28f, 1f), false, false);
+            // Este é o material que o usuário já aprovou para o rim ativo.
+            // Reaproveitá-lo evita que uma reconstrução posterior normalize ou
+            // altere propriedades internas do shader URP.
+            Material exterior = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/MAT_KidneyExterior_URP.mat");
+            if (exterior == null)
+            {
+                exterior = CreateOrUpdateMaterial("Assets/Materials/MAT_KidneyExterior_URP.mat", new Color(0.42f, 0.055f, 0.10f, 0.48f), true, false);
+            }
+            Material interior = CreateOrUpdateMaterial("Assets/Materials/MAT_CollectingSystem_URP.mat", new Color(0.94f, 0.72f, 0.72f, 1f), false, false);
+            Material rightKidney = CreateOrUpdateMaterial("Assets/Materials/MAT_KidneyRight_URP.mat", new Color(0.48f, 0.035f, 0.055f, 1f), false, false);
             Material route = CreateOrUpdateMaterial("Assets/Materials/MAT_Route_URP.mat", new Color(0.02f, 0.78f, 1f, 0.26f), true, true);
+            route.SetFloat("_Cull", (float)CullMode.Back);
+            EditorUtility.SetDirty(route);
             Material stone = CreateOrUpdateMaterial("Assets/Materials/MAT_Stone_URP.mat", new Color(0.95f, 0.62f, 0.08f, 1f), false, true);
-            Material ureter = CreateOrUpdateMaterial("Assets/Materials/MAT_Ureter_URP.mat", new Color(0.68f, 0.10f, 0.20f, 1f), false, false);
-            Material bladder = CreateOrUpdateMaterial("Assets/Materials/MAT_Bladder_URP.mat", new Color(0.62f, 0.08f, 0.16f, 1f), false, false);
+            Material ureter = CreateOrUpdateMaterial("Assets/Materials/MAT_Ureter_URP.mat", new Color(0.82f, 0.045f, 0.09f, 0.88f), true, false);
+            Material bladder = CreateOrUpdateMaterial("Assets/Materials/MAT_Bladder_URP.mat", new Color(0.72f, 0.035f, 0.07f, 0.82f), true, false);
             Material probe = CreateOrUpdateMaterial("Assets/Materials/MAT_ProbeMarker_URP.mat", new Color(0.02f, 0.85f, 1f, 1f), false, true);
 
+            Texture2D mucosaBaseColor = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaBaseColorPath);
+            Texture2D mucosaNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaNormalPath);
+            ConfigureOrganicMaterial(interior, mucosaBaseColor, mucosaNormal, new Vector2(5f, 7f), 0.42f, 0.74f, true);
+            ConfigureOrganicMaterial(rightKidney, null, mucosaNormal, new Vector2(3.2f, 3.2f), 0.18f, 0.68f, false);
+            ConfigureOrganicMaterial(ureter, null, mucosaNormal, new Vector2(2f, 8f), 0.16f, 0.82f, false);
+            ConfigureOrganicMaterial(bladder, null, mucosaNormal, new Vector2(3f, 3f), 0.22f, 0.78f, false);
+
             CreateKidneyPrefab(exterior, interior, route, stone);
-            CreateGameScene(ureter, bladder, probe);
+            CreateGameScene(rightKidney, ureter, bladder, probe);
             CreateMenuScene();
             ConfigureBuildSettings();
             AssetDatabase.SaveAssets();
@@ -134,7 +155,8 @@ namespace NavegacaoRenal.Editor
             string[] folders =
             {
                 "Assets/Art", "Assets/Materials", "Assets/Prefabs", "Assets/Prefabs/Kidney",
-                "Assets/Scenes", "Assets/Settings", "Assets/Generated", "Assets/Generated/Meshes"
+                "Assets/Scenes", "Assets/Settings", "Assets/Generated", "Assets/Generated/Meshes",
+                "Assets/Art/Textures", "Assets/Art/Textures/Organic"
             };
 
             foreach (string folder in folders)
@@ -181,6 +203,31 @@ namespace NavegacaoRenal.Editor
             importer.importLights = false;
             importer.materialImportMode = ModelImporterMaterialImportMode.None;
             importer.isReadable = true;
+            importer.SaveAndReimport();
+        }
+
+        private static void ConfigureOrganicTextureImporters()
+        {
+            ConfigureTextureImporter(MucosaBaseColorPath, false);
+            ConfigureTextureImporter(MucosaNormalPath, true);
+        }
+
+        private static void ConfigureTextureImporter(string path, bool normalMap)
+        {
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) throw new InvalidOperationException("Textura organica ausente: " + path);
+
+            importer.wrapMode = TextureWrapMode.Repeat;
+            importer.filterMode = FilterMode.Trilinear;
+            importer.anisoLevel = 8;
+            importer.mipmapEnabled = true;
+            importer.maxTextureSize = 2048;
+            importer.textureCompression = TextureImporterCompression.CompressedHQ;
+            importer.textureType = normalMap ? TextureImporterType.NormalMap : TextureImporterType.Default;
+            importer.sRGBTexture = !normalMap;
+            importer.convertToNormalmap = normalMap;
+            if (normalMap) importer.heightmapScale = 0.08f;
             importer.SaveAndReimport();
         }
 
@@ -245,6 +292,27 @@ namespace NavegacaoRenal.Editor
             return material;
         }
 
+        private static void ConfigureOrganicMaterial(
+            Material material,
+            Texture2D baseColor,
+            Texture2D normal,
+            Vector2 tiling,
+            float normalStrength,
+            float smoothness,
+            bool doubleSided)
+        {
+            material.SetTexture("_BaseMap", baseColor);
+            material.SetTextureScale("_BaseMap", tiling);
+            material.SetTexture("_BumpMap", normal);
+            material.SetTextureScale("_BumpMap", tiling);
+            material.SetFloat("_BumpScale", normalStrength);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_Cull", doubleSided ? (float)CullMode.Off : (float)CullMode.Back);
+            if (normal != null) material.EnableKeyword("_NORMALMAP");
+            else material.DisableKeyword("_NORMALMAP");
+            EditorUtility.SetDirty(material);
+        }
+
         private static void CreateKidneyPrefab(Material exteriorMaterial, Material interiorMaterial, Material routeMaterial, Material stoneMaterial)
         {
             GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
@@ -284,7 +352,7 @@ namespace NavegacaoRenal.Editor
             UnityEngine.Object.DestroyImmediate(root);
         }
 
-        private static void CreateGameScene(Material ureterMaterial, Material bladderMaterial, Material probeMaterial)
+        private static void CreateGameScene(Material rightKidneyMaterial, Material ureterMaterial, Material bladderMaterial, Material probeMaterial)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             RenderSettings.ambientMode = AmbientMode.Trilight;
@@ -306,6 +374,7 @@ namespace NavegacaoRenal.Editor
             passive.transform.position = new Vector3(0.56f, 0.34f, 0f);
             passive.transform.rotation = Quaternion.Euler(2f, 12f, 5f);
             passive.transform.localScale = new Vector3(-1f, 1f, 1f);
+            SetNodeMaterialAndLayer(passive.transform, "KidneyExterior", rightKidneyMaterial, "KidneyExterior");
             DisablePassiveGameplay(passive.transform);
 
             CreateUrinarySystemMeshes(systems.transform, ureterMaterial, bladderMaterial);
@@ -323,13 +392,8 @@ namespace NavegacaoRenal.Editor
             GameObject realisticRig = new GameObject("RealisticRig");
             GameObject probe = new GameObject("ProbeTip");
             probe.transform.SetParent(realisticRig.transform, false);
-            CharacterController character = probe.AddComponent<CharacterController>();
-            character.radius = 0.010f;
-            character.height = 0.024f;
-            character.skinWidth = 0.001f;
-            character.minMoveDistance = 0f;
             MouseEndoscopeController controller = probe.AddComponent<MouseEndoscopeController>();
-            controller.Configure(manager);
+            controller.Configure(manager, 1 << LayerMask.NameToLayer("KidneyCollision"));
 
             GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             marker.name = "ProbeMarker";
@@ -390,35 +454,60 @@ namespace NavegacaoRenal.Editor
         {
             Vector3[] leftPoints =
             {
-                new Vector3(-0.76f, -0.06f, 0.01f), new Vector3(-0.69f, -0.33f, 0.015f),
-                new Vector3(-0.58f, -0.66f, 0.02f), new Vector3(-0.34f, -1.02f, 0.01f)
+                new Vector3(-0.73f, -0.04f, 0.01f), new Vector3(-0.73f, -0.20f, 0.015f),
+                new Vector3(-0.68f, -0.40f, 0.02f), new Vector3(-0.60f, -0.61f, 0.02f),
+                new Vector3(-0.50f, -0.80f, 0.018f), new Vector3(-0.38f, -0.97f, 0.014f),
+                new Vector3(-0.28f, -1.06f, 0.01f)
             };
             Vector3[] rightPoints = leftPoints.Select(p => new Vector3(-p.x, p.y, p.z)).ToArray();
-            Mesh leftMesh = SaveMesh(CreateTubeMesh(leftPoints, 0.035f, 16), "Assets/Generated/Meshes/LeftUreter.asset");
-            Mesh rightMesh = SaveMesh(CreateTubeMesh(rightPoints, 0.035f, 16), "Assets/Generated/Meshes/RightUreter.asset");
+            Mesh leftMesh = SaveMesh(CreateSmoothTubeMesh(leftPoints, 0.026f, 0.020f, 24, 7), "Assets/Generated/Meshes/LeftUreter.asset");
+            Mesh rightMesh = SaveMesh(CreateSmoothTubeMesh(rightPoints, 0.026f, 0.020f, 24, 7), "Assets/Generated/Meshes/RightUreter.asset");
             CreateMeshObject("LeftUreter", leftMesh, ureterMaterial, parent);
             CreateMeshObject("RightUreter", rightMesh, ureterMaterial, parent);
 
-            Mesh bladderMesh = SaveMesh(CreateUvSphere(24, 18), "Assets/Generated/Meshes/Bladder.asset");
+            Mesh bladderMesh = SaveMesh(CreateUvSphere(40, 28, true), "Assets/Generated/Meshes/Bladder.asset");
             GameObject bladder = CreateMeshObject("Bladder", bladderMesh, bladderMaterial, parent);
             bladder.transform.position = new Vector3(0f, -1.18f, 0.02f);
-            bladder.transform.localScale = new Vector3(0.42f, 0.34f, 0.28f);
+            bladder.transform.localScale = new Vector3(0.39f, 0.34f, 0.29f);
+
+            Vector3[] outletPoints =
+            {
+                new Vector3(0f, -1.48f, 0.02f), new Vector3(0f, -1.60f, 0.02f)
+            };
+            Mesh outletMesh = SaveMesh(CreateSmoothTubeMesh(outletPoints, 0.035f, 0.025f, 24, 4), "Assets/Generated/Meshes/BladderOutlet.asset");
+            CreateMeshObject("BladderOutlet", outletMesh, bladderMaterial, parent);
         }
 
-        private static Mesh CreateTubeMesh(IReadOnlyList<Vector3> points, float radius, int sides)
+        private static Mesh CreateSmoothTubeMesh(IReadOnlyList<Vector3> controlPoints, float startRadius, float endRadius, int sides, int samplesPerSegment)
         {
+            List<Vector3> points = new List<Vector3>();
+            for (int segment = 0; segment < controlPoints.Count - 1; segment++)
+            {
+                Vector3 p0 = controlPoints[Math.Max(0, segment - 1)];
+                Vector3 p1 = controlPoints[segment];
+                Vector3 p2 = controlPoints[segment + 1];
+                Vector3 p3 = controlPoints[Math.Min(controlPoints.Count - 1, segment + 2)];
+                for (int sample = 0; sample < samplesPerSegment; sample++)
+                    points.Add(CatmullRom(p0, p1, p2, p3, (float)sample / samplesPerSegment));
+            }
+            points.Add(controlPoints[controlPoints.Count - 1]);
+
             List<Vector3> vertices = new List<Vector3>();
             List<int> triangles = new List<int>();
+            List<Vector2> uvs = new List<Vector2>();
             for (int i = 0; i < points.Count; i++)
             {
                 Vector3 tangent = i == points.Count - 1 ? points[i] - points[i - 1] : points[Math.Min(i + 1, points.Count - 1)] - points[Math.Max(0, i - 1)];
                 tangent.Normalize();
                 Vector3 normal = Vector3.Cross(tangent, Mathf.Abs(Vector3.Dot(tangent, Vector3.forward)) > 0.9f ? Vector3.up : Vector3.forward).normalized;
                 Vector3 binormal = Vector3.Cross(tangent, normal).normalized;
+                float progress = (float)i / (points.Count - 1);
+                float radius = Mathf.Lerp(startRadius, endRadius, progress);
                 for (int side = 0; side < sides; side++)
                 {
                     float angle = side * Mathf.PI * 2f / sides;
                     vertices.Add(points[i] + (normal * Mathf.Cos(angle) + binormal * Mathf.Sin(angle)) * radius);
+                    uvs.Add(new Vector2((float)side / sides, progress * 6f));
                 }
             }
             for (int ring = 0; ring < points.Count - 1; ring++)
@@ -437,15 +526,27 @@ namespace NavegacaoRenal.Editor
             Mesh mesh = new Mesh { name = "ProceduralUreter" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetUVs(0, uvs);
             mesh.RecalculateNormals();
+            mesh.RecalculateTangents();
             mesh.RecalculateBounds();
             return mesh;
         }
 
-        private static Mesh CreateUvSphere(int longitude, int latitude)
+        private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
+        {
+            float t2 = t * t;
+            float t3 = t2 * t;
+            return 0.5f * ((2f * p1) + (-p0 + p2) * t +
+                (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+                (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+        }
+
+        private static Mesh CreateUvSphere(int longitude, int latitude, bool pearShape)
         {
             List<Vector3> vertices = new List<Vector3>();
             List<int> triangles = new List<int>();
+            List<Vector2> uvs = new List<Vector2>();
             for (int lat = 0; lat <= latitude; lat++)
             {
                 float v = (float)lat / latitude;
@@ -454,7 +555,10 @@ namespace NavegacaoRenal.Editor
                 {
                     float u = (float)lon / longitude;
                     float theta = Mathf.PI * 2f * u;
-                    vertices.Add(new Vector3(Mathf.Sin(phi) * Mathf.Cos(theta), Mathf.Cos(phi), Mathf.Sin(phi) * Mathf.Sin(theta)));
+                    float y = Mathf.Cos(phi);
+                    float profile = pearShape ? Mathf.Lerp(0.84f, 1.06f, (1f - y) * 0.5f) : 1f;
+                    vertices.Add(new Vector3(Mathf.Sin(phi) * Mathf.Cos(theta) * profile, y, Mathf.Sin(phi) * Mathf.Sin(theta) * profile));
+                    uvs.Add(new Vector2(u, v));
                 }
             }
             for (int lat = 0; lat < latitude; lat++)
@@ -470,7 +574,9 @@ namespace NavegacaoRenal.Editor
             Mesh mesh = new Mesh { name = "ProceduralBladder" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetUVs(0, uvs);
             mesh.RecalculateNormals();
+            mesh.RecalculateTangents();
             mesh.RecalculateBounds();
             return mesh;
         }
