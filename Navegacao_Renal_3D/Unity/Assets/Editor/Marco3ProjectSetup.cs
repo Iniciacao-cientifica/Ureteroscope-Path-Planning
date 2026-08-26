@@ -14,23 +14,31 @@ namespace NavegacaoRenal.Editor
         private const string GameScenePath = "Assets/Scenes/KidneyGame.unity";
         private const string ModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v002.fbx";
         private const string ExpectedModelHash = "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c";
+        private const string MeshyVisualModelPath = "Assets/Art/UrinarySystem/Models/Meshy_Urinary_Visual_v002.fbx";
+        private const string ExpectedMeshyVisualHash = "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2";
+        private const string MeshyBaseColorPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_BaseColor_v002.png";
+        private const string MeshyNormalPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_Normal_v002.png";
+        private const string MeshyMetallicPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_Metallic_v002.png";
+        private const string MeshyRoughnessPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_Roughness_v002.png";
+        private const string MeshyMaskPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_MaskMap_v002.png";
+        private const string MeshyMaterialPath = "Assets/Materials/MAT_MeshyUrinary_URP.mat";
         private const string MucosaBaseColorPath = "Assets/Art/Textures/Organic/T_RenalMucosa_BaseColor_v001.png";
         private const string MucosaNormalPath = "Assets/Art/Textures/Organic/T_RenalMucosa_NormalSource_v001.png";
 
-        [MenuItem("Navegacao Renal/Construir Marco 3")]
+        [MenuItem("Navegacao Renal/Construir Marco 3.1")]
         public static void Configure()
         {
-            Debug.Log("[Marco3] Gerando cenas com o controlador SphereCast.");
+            Debug.Log("[Marco3.1] Integrando visual Meshy e preservando o controlador SphereCast.");
             Marco2ProjectSetup.Configure();
             Physics.queriesHitBackfaces = true;
             AssetDatabase.SaveAssets();
             Validate();
             CapturePreviews();
             AssetDatabase.Refresh();
-            Debug.Log("[Marco3] Configuracao, validacao e previews concluidos.");
+            Debug.Log("[Marco3.1] Configuracao, validacao e previews concluidos.");
         }
 
-        [MenuItem("Navegacao Renal/Validar Marco 3")]
+        [MenuItem("Navegacao Renal/Validar Marco 3.1")]
         public static void Validate()
         {
             List<string> checks = new List<string>();
@@ -47,12 +55,10 @@ namespace NavegacaoRenal.Editor
             Camera endoscopeCamera = FindSceneComponent<Camera>(scene, "EndoscopeCamera");
             Transform collisionNode = FindSceneTransform(scene, "CollectingSystemCollision_Inward");
             Transform activeExterior = FindSceneTransformUnder(scene, "KidneyLevel_Active", "KidneyExterior");
-            Transform passiveExterior = FindSceneTransformUnder(scene, "KidneyLevel_Passive", "KidneyExterior");
             Transform collectingVisual = FindSceneTransformUnder(scene, "KidneyLevel_Active", "CollectingSystemVisual");
-            Transform leftUreter = FindSceneTransform(scene, "LeftUreter");
-            Transform rightUreter = FindSceneTransform(scene, "RightUreter");
-            Transform bladder = FindSceneTransform(scene, "Bladder");
-            Transform bladderOutlet = FindSceneTransform(scene, "BladderOutlet");
+            Transform meshyRoot = FindSceneTransform(scene, "MeshyUrinaryVisualRoot");
+            Transform meshyRightKidney = FindSceneTransformUnder(scene, "MeshyUrinaryVisualRoot", "Meshy_RightKidney");
+            Transform meshyLowerSystem = FindSceneTransformUnder(scene, "MeshyUrinaryVisualRoot", "Meshy_UretersAndBladder");
             int collisionLayer = LayerMask.NameToLayer("KidneyCollision");
             int collisionMask = collisionLayer >= 0 ? 1 << collisionLayer : 0;
 
@@ -64,7 +70,7 @@ namespace NavegacaoRenal.Editor
             Check(Physics.queriesHitBackfaces, "consultas a faces internas habilitadas", checks, errors);
             Check(FindAllComponents<CharacterController>(scene).Length == 0, "CharacterController removido", checks, errors);
             Check(CountMissingScripts(scene) == 0, "nenhum script ausente na cena", checks, errors);
-            ValidateVisualRevision(activeExterior, passiveExterior, collectingVisual, leftUreter, rightUreter, bladder, bladderOutlet, checks, errors);
+            ValidateVisualRevision(scene, activeExterior, collectingVisual, meshyRoot, meshyRightKidney, meshyLowerSystem, checks, errors);
 
             if (controller != null)
             {
@@ -105,26 +111,30 @@ namespace NavegacaoRenal.Editor
             string modelHash = File.Exists(ToAbsolute(ModelPath)) ? Sha256(ToAbsolute(ModelPath)) : string.Empty;
             Check(string.Equals(modelHash, ExpectedModelHash, StringComparison.OrdinalIgnoreCase),
                 "FBX v002 permaneceu inalterado", checks, errors);
+            string meshyHash = File.Exists(ToAbsolute(MeshyVisualModelPath)) ? Sha256(ToAbsolute(MeshyVisualModelPath)) : string.Empty;
+            Check(string.Equals(meshyHash, ExpectedMeshyVisualHash, StringComparison.OrdinalIgnoreCase),
+                "FBX visual Meshy corresponde a versao Maya aprovada", checks, errors);
 
             ValidationReport report = new ValidationReport
             {
-                milestone = "Marco 3",
+                milestone = "Marco 3.1",
                 unityVersion = Application.unityVersion,
                 generatedUtc = DateTime.UtcNow.ToString("O"),
                 passed = errors.Count == 0,
                 fbxSha256 = modelHash,
+                visualFbxSha256 = meshyHash,
                 controller = "SphereCast substep controller",
                 checks = checks.ToArray(),
                 errors = errors.ToArray()
             };
 
-            string reportPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/marco3_validation.json"));
+            string reportPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/marco31_validation.json"));
             Directory.CreateDirectory(Path.GetDirectoryName(reportPath));
             File.WriteAllText(reportPath, JsonUtility.ToJson(report, true));
-            Debug.Log($"[Marco3] Relatorio: {reportPath}\n{JsonUtility.ToJson(report, true)}");
+            Debug.Log($"[Marco3.1] Relatorio: {reportPath}\n{JsonUtility.ToJson(report, true)}");
 
             if (errors.Count > 0)
-                throw new InvalidOperationException("Marco 3 falhou: " + string.Join(" | ", errors));
+                throw new InvalidOperationException("Marco 3.1 falhou: " + string.Join(" | ", errors));
         }
 
         private static void ValidateFrameRateEquivalence(List<string> checks, List<string> errors)
@@ -160,25 +170,23 @@ namespace NavegacaoRenal.Editor
         }
 
         private static void ValidateVisualRevision(
+            Scene scene,
             Transform activeExterior,
-            Transform passiveExterior,
             Transform collectingVisual,
-            Transform leftUreter,
-            Transform rightUreter,
-            Transform bladder,
-            Transform bladderOutlet,
+            Transform meshyRoot,
+            Transform meshyRightKidney,
+            Transform meshyLowerSystem,
             List<string> checks,
             List<string> errors)
         {
-            Texture2D baseColor = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaBaseColorPath);
-            Texture2D normal = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaNormalPath);
-            TextureImporter normalImporter = AssetImporter.GetAtPath(MucosaNormalPath) as TextureImporter;
-            Check(baseColor != null, "textura organica interna presente", checks, errors);
-            Check(normal != null && normalImporter != null && normalImporter.textureType == TextureImporterType.NormalMap,
+            Texture2D mucosaBaseColor = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaBaseColorPath);
+            Texture2D mucosaNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaNormalPath);
+            TextureImporter mucosaNormalImporter = AssetImporter.GetAtPath(MucosaNormalPath) as TextureImporter;
+            Check(mucosaBaseColor != null, "textura organica interna presente", checks, errors);
+            Check(mucosaNormal != null && mucosaNormalImporter != null && mucosaNormalImporter.textureType == TextureImporterType.NormalMap,
                 "normal map organico importado corretamente", checks, errors);
 
             Material activeMaterial = activeExterior != null ? activeExterior.GetComponent<Renderer>()?.sharedMaterial : null;
-            Material passiveMaterial = passiveExterior != null ? passiveExterior.GetComponent<Renderer>()?.sharedMaterial : null;
             Material interiorMaterial = collectingVisual != null ? collectingVisual.GetComponent<Renderer>()?.sharedMaterial : null;
             Color approvedActiveColor = new Color(0.42f, 0.055f, 0.10f, 0.48f);
             Check(activeMaterial != null &&
@@ -191,18 +199,82 @@ namespace NavegacaoRenal.Editor
                   Approximately(activeMaterial.GetFloat("_Smoothness"), 0.58f) &&
                   Approximately(activeMaterial.GetFloat("_Surface"), 1f),
                 "rim superior esquerdo preserva o material aprovado", checks, errors);
-            Check(passiveMaterial != null && passiveMaterial.name == "MAT_KidneyRight_URP" &&
-                  Approximately(passiveMaterial.GetFloat("_Surface"), 0f),
-                "rim direito fechado usa material organico proprio", checks, errors);
-            Check(interiorMaterial != null && interiorMaterial.GetTexture("_BaseMap") == baseColor &&
-                  interiorMaterial.GetTexture("_BumpMap") == normal,
+            Check(interiorMaterial != null && interiorMaterial.GetTexture("_BaseMap") == mucosaBaseColor &&
+                  interiorMaterial.GetTexture("_BumpMap") == mucosaNormal,
                 "parede interna usa cor e relevo organicos", checks, errors);
 
-            Check(MeshVertexCount(leftUreter) >= 900 && MeshVertexCount(rightUreter) >= 900,
-                "ureteres suavizados com alta densidade", checks, errors);
-            Check(MeshVertexCount(bladder) >= 1000, "bexiga organica suavizada", checks, errors);
-            Check(bladderOutlet != null && MeshVertexCount(bladderOutlet) > 0,
-                "saida inferior da bexiga criada", checks, errors);
+            Texture2D meshyBase = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyBaseColorPath);
+            Texture2D meshyNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyNormalPath);
+            Texture2D meshyMetallic = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyMetallicPath);
+            Texture2D meshyRoughness = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyRoughnessPath);
+            Texture2D meshyMask = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyMaskPath);
+            Check(meshyBase != null && meshyNormal != null && meshyMetallic != null && meshyRoughness != null,
+                "quatro mapas PBR Meshy presentes", checks, errors);
+            Check(meshyMask != null, "Mask Map URP empacotado presente", checks, errors);
+
+            TextureImporter baseImporter = AssetImporter.GetAtPath(MeshyBaseColorPath) as TextureImporter;
+            TextureImporter meshyNormalImporter = AssetImporter.GetAtPath(MeshyNormalPath) as TextureImporter;
+            TextureImporter metallicImporter = AssetImporter.GetAtPath(MeshyMetallicPath) as TextureImporter;
+            TextureImporter roughnessImporter = AssetImporter.GetAtPath(MeshyRoughnessPath) as TextureImporter;
+            TextureImporter maskImporter = AssetImporter.GetAtPath(MeshyMaskPath) as TextureImporter;
+            Check(baseImporter != null && baseImporter.sRGBTexture,
+                "Base Color Meshy importado em sRGB", checks, errors);
+            Check(meshyNormalImporter != null && meshyNormalImporter.textureType == TextureImporterType.NormalMap &&
+                  !meshyNormalImporter.convertToNormalmap,
+                "Normal Meshy importado como normal map autorado", checks, errors);
+            Check(metallicImporter != null && roughnessImporter != null && maskImporter != null &&
+                  !metallicImporter.sRGBTexture && !roughnessImporter.sRGBTexture && !maskImporter.sRGBTexture,
+                "Metallic, Roughness e Mask importados em espaco linear", checks, errors);
+
+            Material meshyMaterial = AssetDatabase.LoadAssetAtPath<Material>(MeshyMaterialPath);
+            Check(meshyMaterial != null && meshyMaterial.GetTexture("_BaseMap") == meshyBase &&
+                  meshyMaterial.GetTexture("_BumpMap") == meshyNormal &&
+                  meshyMaterial.GetTexture("_MetallicGlossMap") == meshyMask,
+                "material URP Meshy usa Base Color, Normal e Mask Map", checks, errors);
+
+            Check(meshyRoot != null && Approximately(meshyRoot.localScale.x, 5f) &&
+                  Approximately(meshyRoot.localScale.y, 5f) && Approximately(meshyRoot.localScale.z, 5f),
+                "visual Meshy aplica escala uniforme 5x", checks, errors);
+            Check(meshyRightKidney != null && meshyLowerSystem != null,
+                "rim direito, ureteres e bexiga Meshy nomeados", checks, errors);
+            Check(MeshTriangleCount(meshyRightKidney) + MeshTriangleCount(meshyLowerSystem) == 11026,
+                "visual Unity contem 11.026 triangulos", checks, errors);
+            Check(MeshUvCount(meshyRightKidney) + MeshUvCount(meshyLowerSystem) > 0,
+                "visual Meshy possui UVs validos", checks, errors);
+            Check(meshyLowerSystem != null && meshyLowerSystem.GetComponentsInChildren<MeshFilter>(true).Length == 1,
+                "dois ureteres e bexiga permanecem em uma malha continua de exportacao", checks, errors);
+
+            int exteriorLayer = LayerMask.NameToLayer("KidneyExterior");
+            Check(meshyRoot != null && meshyRoot.GetComponentsInChildren<Transform>(true).All(t => t.gameObject.layer == exteriorLayer),
+                "todo o visual Meshy usa a camada KidneyExterior", checks, errors);
+            Check(meshyRoot != null && meshyRoot.GetComponentsInChildren<Collider>(true).Length == 0,
+                "visual Meshy nao participa da colisao navegavel", checks, errors);
+
+            string[] sceneNames = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Transform>(true)).Select(t => t.name).ToArray();
+            Check(!sceneNames.Contains("KidneyLevel_Passive") && !sceneNames.Contains("LeftUreter") &&
+                  !sceneNames.Contains("RightUreter") && !sceneNames.Contains("Bladder") && !sceneNames.Contains("BladderOutlet"),
+                "malhas procedurais antigas preservadas como fallback, mas fora da cena", checks, errors);
+
+            Renderer activeRenderer = activeExterior != null ? activeExterior.GetComponent<Renderer>() : null;
+            Renderer rightRenderer = meshyRightKidney != null ? meshyRightKidney.GetComponentInChildren<Renderer>() : null;
+            Renderer lowerRenderer = meshyLowerSystem != null ? meshyLowerSystem.GetComponentInChildren<Renderer>() : null;
+            Check(activeRenderer != null && lowerRenderer != null && activeRenderer.bounds.Intersects(lowerRenderer.bounds),
+                $"ureter esquerdo visual alcanca o rim ativo (rim {FormatBounds(activeRenderer)}, sistema {FormatBounds(lowerRenderer)})", checks, errors);
+            Check(rightRenderer != null && lowerRenderer != null && rightRenderer.bounds.Intersects(lowerRenderer.bounds),
+                $"ureter direito visual alcanca o rim direito (rim {FormatBounds(rightRenderer)}, sistema {FormatBounds(lowerRenderer)})", checks, errors);
+
+            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(MeshyVisualModelPath);
+            GameObject temporary = source != null ? UnityEngine.Object.Instantiate(source) : null;
+            try
+            {
+                Bounds sourceBounds = CombinedRendererBounds(temporary);
+                Check(source != null && sourceBounds.size.y > 0.464f && sourceBounds.size.y < 0.466f,
+                    $"FBX Meshy importado com altura fisica de {sourceBounds.size.y:F6} m e centro {sourceBounds.center:F3}", checks, errors);
+            }
+            finally
+            {
+                if (temporary != null) UnityEngine.Object.DestroyImmediate(temporary);
+            }
         }
 
         private static int MeshVertexCount(Transform transform)
@@ -210,6 +282,32 @@ namespace NavegacaoRenal.Editor
             MeshFilter filter = transform != null ? transform.GetComponent<MeshFilter>() : null;
             return filter != null && filter.sharedMesh != null ? filter.sharedMesh.vertexCount : 0;
         }
+
+        private static int MeshTriangleCount(Transform transform) => transform == null
+            ? 0
+            : transform.GetComponentsInChildren<MeshFilter>(true)
+                .Where(filter => filter.sharedMesh != null)
+                .Sum(filter => filter.sharedMesh.triangles.Length / 3);
+
+        private static int MeshUvCount(Transform transform) => transform == null
+            ? 0
+            : transform.GetComponentsInChildren<MeshFilter>(true)
+                .Where(filter => filter.sharedMesh != null)
+                .Sum(filter => filter.sharedMesh.uv.Length);
+
+        private static Bounds CombinedRendererBounds(GameObject root)
+        {
+            if (root == null) return new Bounds();
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0) return new Bounds();
+            Bounds bounds = renderers[0].bounds;
+            for (int index = 1; index < renderers.Length; index++) bounds.Encapsulate(renderers[index].bounds);
+            return bounds;
+        }
+
+        private static string FormatBounds(Renderer renderer) => renderer == null
+            ? "ausente"
+            : $"centro={renderer.bounds.center:F3}, tamanho={renderer.bounds.size:F3}";
 
         private static void ValidateCollisionAndContactLatch(
             MouseEndoscopeController controller,
@@ -332,11 +430,11 @@ namespace NavegacaoRenal.Editor
             string directory = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/Previews"));
             Directory.CreateDirectory(directory);
 
-            CaptureCamera(explorationCamera, Path.Combine(directory, "marco3_visual_system.png"));
+            CaptureCamera(explorationCamera, Path.Combine(directory, "marco31_visual_system.png"));
             if (route != null) route.SetActive(false);
-            CaptureCamera(camera, Path.Combine(directory, "marco3_realistic_route_off.png"));
+            CaptureCamera(camera, Path.Combine(directory, "marco31_realistic_route_off.png"));
             if (route != null) route.SetActive(true);
-            CaptureCamera(camera, Path.Combine(directory, "marco3_realistic_route_on.png"));
+            CaptureCamera(camera, Path.Combine(directory, "marco31_realistic_route_on.png"));
             if (route != null) route.SetActive(false);
         }
 
@@ -356,7 +454,7 @@ namespace NavegacaoRenal.Editor
                 image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
                 image.Apply();
                 File.WriteAllBytes(outputPath, image.EncodeToPNG());
-                Debug.Log("[Marco3] Preview criado: " + outputPath);
+                Debug.Log("[Marco3.1] Preview criado: " + outputPath);
             }
             finally
             {
@@ -428,6 +526,7 @@ namespace NavegacaoRenal.Editor
             public string generatedUtc;
             public bool passed;
             public string fbxSha256;
+            public string visualFbxSha256;
             public string controller;
             public string[] checks;
             public string[] errors;

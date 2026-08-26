@@ -23,6 +23,13 @@ namespace NavegacaoRenal.Editor
         private const string RendererPath = "Assets/Settings/NavegacaoRenal_Renderer.asset";
         private const string MucosaBaseColorPath = "Assets/Art/Textures/Organic/T_RenalMucosa_BaseColor_v001.png";
         private const string MucosaNormalPath = "Assets/Art/Textures/Organic/T_RenalMucosa_NormalSource_v001.png";
+        private const string MeshyVisualModelPath = "Assets/Art/UrinarySystem/Models/Meshy_Urinary_Visual_v002.fbx";
+        private const string MeshyBaseColorPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_BaseColor_v002.png";
+        private const string MeshyNormalPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_Normal_v002.png";
+        private const string MeshyMetallicPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_Metallic_v002.png";
+        private const string MeshyRoughnessPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_Roughness_v002.png";
+        private const string MeshyMaskPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_MaskMap_v002.png";
+        private const string MeshyMaterialPath = "Assets/Materials/MAT_MeshyUrinary_URP.mat";
 
         private static readonly string[] RequiredNodes =
         {
@@ -39,6 +46,7 @@ namespace NavegacaoRenal.Editor
             Physics.queriesHitBackfaces = true;
             ConfigureModelImporter();
             ConfigureOrganicTextureImporters();
+            ConfigureMeshyVisualImporters();
             ConfigureRenderPipeline();
 
             // Este é o material que o usuário já aprovou para o rim ativo.
@@ -58,6 +66,7 @@ namespace NavegacaoRenal.Editor
             Material ureter = CreateOrUpdateMaterial("Assets/Materials/MAT_Ureter_URP.mat", new Color(0.82f, 0.045f, 0.09f, 0.88f), true, false);
             Material bladder = CreateOrUpdateMaterial("Assets/Materials/MAT_Bladder_URP.mat", new Color(0.72f, 0.035f, 0.07f, 0.82f), true, false);
             Material probe = CreateOrUpdateMaterial("Assets/Materials/MAT_ProbeMarker_URP.mat", new Color(0.02f, 0.85f, 1f, 1f), false, true);
+            Material meshyUrinary = CreateOrUpdateMeshyMaterial();
 
             Texture2D mucosaBaseColor = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaBaseColorPath);
             Texture2D mucosaNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(MucosaNormalPath);
@@ -67,7 +76,7 @@ namespace NavegacaoRenal.Editor
             ConfigureOrganicMaterial(bladder, null, mucosaNormal, new Vector2(3f, 3f), 0.22f, 0.78f, false);
 
             CreateKidneyPrefab(exterior, interior, route, stone);
-            CreateGameScene(rightKidney, ureter, bladder, probe);
+            CreateGameScene(meshyUrinary, probe);
             CreateMenuScene();
             ConfigureBuildSettings();
             AssetDatabase.SaveAssets();
@@ -121,13 +130,19 @@ namespace NavegacaoRenal.Editor
             string expectedHash = "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c";
             string actualHash = File.Exists(ToAbsolute(ModelPath)) ? Sha256(ToAbsolute(ModelPath)) : string.Empty;
             Check(string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase), "SHA-256 do FBX v002", checks, errors);
+            string expectedMeshyHash = "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2";
+            string actualMeshyHash = File.Exists(ToAbsolute(MeshyVisualModelPath)) ? Sha256(ToAbsolute(MeshyVisualModelPath)) : string.Empty;
+            Check(string.Equals(actualMeshyHash, expectedMeshyHash, StringComparison.OrdinalIgnoreCase), "SHA-256 do visual Meshy v002", checks, errors);
 
             Scene gameScene = EditorSceneManager.OpenScene(GameScenePath, OpenSceneMode.Single);
             string[] sceneNames = gameScene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Transform>(true)).Select(t => t.name).ToArray();
             Check(sceneNames.Count(n => n == "KidneyLevel_Active") == 1, "um rim ativo detalhado", checks, errors);
-            Check(sceneNames.Count(n => n == "KidneyLevel_Passive") == 1, "um segundo rim na cena", checks, errors);
-            Check(sceneNames.Contains("LeftUreter") && sceneNames.Contains("RightUreter"), "dois ureteres na cena", checks, errors);
-            Check(sceneNames.Contains("Bladder"), "bexiga na cena", checks, errors);
+            Check(sceneNames.Count(n => n == "MeshyUrinaryVisualRoot") == 1, "conjunto visual Meshy na cena", checks, errors);
+            Check(sceneNames.Contains("Meshy_RightKidney"), "rim direito Meshy na cena", checks, errors);
+            Check(sceneNames.Contains("Meshy_UretersAndBladder"), "ureteres e bexiga Meshy na cena", checks, errors);
+            Check(!sceneNames.Contains("KidneyLevel_Passive") && !sceneNames.Contains("LeftUreter") &&
+                  !sceneNames.Contains("RightUreter") && !sceneNames.Contains("Bladder"),
+                "malhas procedurais antigas fora da cena", checks, errors);
             Check(sceneNames.Contains("RealisticRig") && sceneNames.Contains("ExplorationRig"), "dois modos de navegacao", checks, errors);
 
             ValidationReport report = new ValidationReport
@@ -156,7 +171,8 @@ namespace NavegacaoRenal.Editor
             {
                 "Assets/Art", "Assets/Materials", "Assets/Prefabs", "Assets/Prefabs/Kidney",
                 "Assets/Scenes", "Assets/Settings", "Assets/Generated", "Assets/Generated/Meshes",
-                "Assets/Art/Textures", "Assets/Art/Textures/Organic"
+                "Assets/Art/Textures", "Assets/Art/Textures/Organic", "Assets/Art/UrinarySystem",
+                "Assets/Art/UrinarySystem/Models", "Assets/Art/UrinarySystem/Textures"
             };
 
             foreach (string folder in folders)
@@ -210,6 +226,45 @@ namespace NavegacaoRenal.Editor
         {
             ConfigureTextureImporter(MucosaBaseColorPath, false);
             ConfigureTextureImporter(MucosaNormalPath, true);
+        }
+
+        private static void ConfigureMeshyVisualImporters()
+        {
+            AssetDatabase.ImportAsset(MeshyVisualModelPath, ImportAssetOptions.ForceUpdate);
+            ModelImporter modelImporter = AssetImporter.GetAtPath(MeshyVisualModelPath) as ModelImporter;
+            if (modelImporter == null) throw new InvalidOperationException("O FBX visual Meshy v002 nao foi reconhecido pelo Unity.");
+            modelImporter.globalScale = 1f;
+            modelImporter.useFileScale = true;
+            modelImporter.importAnimation = false;
+            modelImporter.importCameras = false;
+            modelImporter.importLights = false;
+            modelImporter.materialImportMode = ModelImporterMaterialImportMode.None;
+            modelImporter.isReadable = true;
+            modelImporter.SaveAndReimport();
+
+            ConfigureMeshyTextureImporter(MeshyBaseColorPath, true, false);
+            ConfigureMeshyTextureImporter(MeshyNormalPath, false, true);
+            ConfigureMeshyTextureImporter(MeshyMetallicPath, false, false);
+            ConfigureMeshyTextureImporter(MeshyRoughnessPath, false, false);
+            ConfigureMeshyTextureImporter(MeshyMaskPath, false, false);
+        }
+
+        private static void ConfigureMeshyTextureImporter(string path, bool sRgb, bool normalMap)
+        {
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) throw new InvalidOperationException("Textura Meshy ausente: " + path);
+            importer.wrapMode = TextureWrapMode.Repeat;
+            importer.filterMode = FilterMode.Trilinear;
+            importer.anisoLevel = 8;
+            importer.mipmapEnabled = true;
+            importer.maxTextureSize = 2048;
+            importer.textureCompression = TextureImporterCompression.CompressedHQ;
+            importer.textureType = normalMap ? TextureImporterType.NormalMap : TextureImporterType.Default;
+            importer.sRGBTexture = sRgb && !normalMap;
+            importer.convertToNormalmap = false;
+            importer.alphaSource = TextureImporterAlphaSource.FromInput;
+            importer.SaveAndReimport();
         }
 
         private static void ConfigureTextureImporter(string path, bool normalMap)
@@ -292,6 +347,29 @@ namespace NavegacaoRenal.Editor
             return material;
         }
 
+        private static Material CreateOrUpdateMeshyMaterial()
+        {
+            Material material = CreateOrUpdateMaterial(MeshyMaterialPath, Color.white, false, false);
+            Texture2D baseColor = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyBaseColorPath);
+            Texture2D normal = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyNormalPath);
+            Texture2D mask = AssetDatabase.LoadAssetAtPath<Texture2D>(MeshyMaskPath);
+            if (baseColor == null || normal == null || mask == null)
+                throw new InvalidOperationException("Os mapas PBR do sistema urinario Meshy nao foram importados.");
+
+            material.SetTexture("_BaseMap", baseColor);
+            material.SetTexture("_BumpMap", normal);
+            material.SetTexture("_MetallicGlossMap", mask);
+            material.SetFloat("_BumpScale", 0.72f);
+            material.SetFloat("_Metallic", 1f);
+            material.SetFloat("_Smoothness", 1f);
+            material.SetFloat("_SmoothnessTextureChannel", 0f);
+            material.SetFloat("_Cull", (float)CullMode.Back);
+            material.EnableKeyword("_NORMALMAP");
+            material.EnableKeyword("_METALLICSPECGLOSSMAP");
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
         private static void ConfigureOrganicMaterial(
             Material material,
             Texture2D baseColor,
@@ -352,7 +430,7 @@ namespace NavegacaoRenal.Editor
             UnityEngine.Object.DestroyImmediate(root);
         }
 
-        private static void CreateGameScene(Material rightKidneyMaterial, Material ureterMaterial, Material bladderMaterial, Material probeMaterial)
+        private static void CreateGameScene(Material meshyUrinaryMaterial, Material probeMaterial)
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             RenderSettings.ambientMode = AmbientMode.Trilight;
@@ -365,19 +443,10 @@ namespace NavegacaoRenal.Editor
             GameObject active = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
             active.name = "KidneyLevel_Active";
             active.transform.SetParent(systems.transform, false);
-            active.transform.position = new Vector3(-0.56f, 0.34f, 0f);
+            active.transform.position = new Vector3(-0.44f, 0.34f, 0f);
             active.transform.rotation = Quaternion.Euler(2f, -12f, -5f);
 
-            GameObject passive = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
-            passive.name = "KidneyLevel_Passive";
-            passive.transform.SetParent(systems.transform, false);
-            passive.transform.position = new Vector3(0.56f, 0.34f, 0f);
-            passive.transform.rotation = Quaternion.Euler(2f, 12f, 5f);
-            passive.transform.localScale = new Vector3(-1f, 1f, 1f);
-            SetNodeMaterialAndLayer(passive.transform, "KidneyExterior", rightKidneyMaterial, "KidneyExterior");
-            DisablePassiveGameplay(passive.transform);
-
-            CreateUrinarySystemMeshes(systems.transform, ureterMaterial, bladderMaterial);
+            CreateMeshyUrinaryVisual(systems.transform, meshyUrinaryMaterial, active.transform);
             CreateLighting();
 
             GameObject managerObject = new GameObject("KidneyGameManager");
@@ -438,6 +507,36 @@ namespace NavegacaoRenal.Editor
             if (startAnchor != null) probe.transform.SetPositionAndRotation(startAnchor.position, startAnchor.rotation);
 
             EditorSceneManager.SaveScene(scene, GameScenePath);
+        }
+
+        private static void CreateMeshyUrinaryVisual(Transform parent, Material material, Transform activeKidney)
+        {
+            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(MeshyVisualModelPath);
+            if (source == null) throw new InvalidOperationException("FBX visual Meshy v002 nao carregado.");
+            GameObject visual = PrefabUtility.InstantiatePrefab(source) as GameObject;
+            if (visual == null) throw new InvalidOperationException("Nao foi possivel instanciar o sistema urinario Meshy.");
+            visual.name = "MeshyUrinaryVisualRoot";
+            visual.transform.SetParent(parent, false);
+            visual.transform.localScale = Vector3.one * 5f;
+            visual.transform.localRotation = Quaternion.identity;
+            visual.transform.localPosition = Vector3.zero;
+
+            // Alinha o centro do rim direito Meshy ao espelho do rim ativo.
+            // A propria geometria importada define o deslocamento, evitando
+            // depender da conversao de eixos e pivôs feita pelo FBX.
+            Transform activeExterior = FindDeep(activeKidney, "KidneyExterior");
+            Transform rightKidney = FindDeep(visual.transform, "Meshy_RightKidney");
+            Renderer activeRenderer = activeExterior != null ? activeExterior.GetComponent<Renderer>() : null;
+            Renderer rightRenderer = rightKidney != null ? rightKidney.GetComponentInChildren<Renderer>() : null;
+            if (activeRenderer == null || rightRenderer == null)
+                throw new InvalidOperationException("Nao foi possivel alinhar os rins visualmente.");
+            Vector3 mirroredCenter = new Vector3(-activeRenderer.bounds.center.x, activeRenderer.bounds.center.y, activeRenderer.bounds.center.z);
+            visual.transform.position += mirroredCenter - rightRenderer.bounds.center;
+
+            int exteriorLayer = LayerMask.NameToLayer("KidneyExterior");
+            SetLayerRecursively(visual, exteriorLayer);
+            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+                renderer.sharedMaterial = material;
         }
 
         private static void CreateMenuScene()

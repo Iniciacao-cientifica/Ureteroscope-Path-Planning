@@ -5,6 +5,8 @@ __pycache__/
 exports/
 !Navegacao_Renal_3D/Maya/Exports/
 !Navegacao_Renal_3D/Maya/Exports/**
+!Navegacao_Renal_3D/Maya/Candidates/**/Exports/
+!Navegacao_Renal_3D/Maya/Candidates/**/Exports/**
 outputs/
 cases/
 cases_test/

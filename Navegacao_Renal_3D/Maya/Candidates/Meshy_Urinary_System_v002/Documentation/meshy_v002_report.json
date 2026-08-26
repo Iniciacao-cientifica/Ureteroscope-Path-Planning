@@ -1,0 +1,113 @@
+{
+  "milestone": "Marco 3.1",
+  "maya_version": "2027",
+  "linear_unit": "cm",
+  "source_high_fbx": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Imports\\Meshy_Urinary_System_High_v002.fbx",
+  "source_high_sha256": "b9150b055bf78d0c5727e0d5740175e761352a58863d3139b8228f3eda523df9",
+  "texture_donor_fbx": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Imports\\Meshy_Urinary_TextureDonor_v001.fbx",
+  "texture_donor_sha256": "dcd41b016178c87e6c1cf285b0fe95496a830d8a001459fd78662a3b0db1f66d",
+  "maya_scene": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Source\\Meshy_Urinary_System_v002.ma",
+  "unity_visual_fbx": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Exports\\Meshy_Urinary_Visual_v002.fbx",
+  "unity_visual_fbx_sha256": "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2",
+  "source_height_cm": 46.5,
+  "source_triangles": 15979,
+  "source_uvs_after_transfer": 11492,
+  "non_manifold_before": [
+    "Meshy_High_Source.vtx[357]",
+    "Meshy_High_Source.vtx[2758]",
+    "Meshy_High_Source.vtx[6276]",
+    "Meshy_High_Source.vtx[7997:7998]"
+  ],
+  "non_manifold_after": [],
+  "alignment_scale": [
+    1.1144556109887767,
+    1.0108695556682312,
+    1.1231882109821894
+  ],
+  "alignment_translation": [
+    -0.044918805360794956,
+    0.24999976108979283,
+    -0.011247034867923222
+  ],
+  "export_height_cm": 46.5,
+  "export_triangles": 11026,
+  "export_uvs": 7931,
+  "export_non_manifold": [],
+  "excluded_from_export": [
+    "Meshy_LeftKidney_REFERENCE",
+    "|Meshy_TextureDonor_ALIGNMENT|Meshy_TextureDonor"
+  ],
+  "parts": [
+    {
+      "name": "Meshy_UretersAndBladder",
+      "vertices": 3077,
+      "triangles": 6083,
+      "uvs": 4400,
+      "non_manifold": [],
+      "bounds_cm": {
+        "width": 14.48584,
+        "height": 37.41797,
+        "depth": 10.67139,
+        "minimum": [
+          -7.22021,
+          -0.0,
+          -5.33569
+        ],
+        "maximum": [
+          7.26562,
+          37.41797,
+          5.33569
+        ]
+      }
+    },
+    {
+      "name": "Meshy_RightKidney",
+      "vertices": 2513,
+      "triangles": 4943,
+      "uvs": 3531,
+      "non_manifold": [],
+      "bounds_cm": {
+        "width": 9.69507,
+        "height": 15.62109,
+        "depth": 8.21924,
+        "minimum": [
+          -14.16797,
+          30.87891,
+          -4.10962
+        ],
+        "maximum": [
+          -4.4729,
+          46.5,
+          4.10962
+        ]
+      }
+    }
+  ],
+  "textures": [
+    {
+      "node": "base_color_texture",
+      "path": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Imports\\T_MeshyUrinary_BaseColor_v002.png",
+      "exists": true,
+      "sha256": "2626b6a0a82c035148d2d5e386d2e348950e990c47def53132eea92b2958b369"
+    },
+    {
+      "node": "normalmap_texture",
+      "path": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Imports\\T_MeshyUrinary_Normal_v002.png",
+      "exists": true,
+      "sha256": "ceae8a4a6dca67d95f5e66660682f8657f0474299cd6cf1607c459355d93afc2"
+    },
+    {
+      "node": "metallic_texture",
+      "path": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Imports\\T_MeshyUrinary_Metallic_v002.png",
+      "exists": true,
+      "sha256": "e7c3b5690005e23012f582df5e40688520fb5f87ce2f519492a569a138f938a7"
+    },
+    {
+      "node": "roughness_texture",
+      "path": "C:\\Users\\pedro\\OneDrive\\Área de Trabalho\\Navegacao_Renal_3D_Maya_v01\\Candidates\\Meshy_Urinary_System_v002\\Imports\\T_MeshyUrinary_Roughness_v002.png",
+      "exists": true,
+      "sha256": "95fe1e070d470878326179051b86b2fee70eeb644c8588cf713caa6c0998a059"
+    }
+  ],
+  "passed": true
+}

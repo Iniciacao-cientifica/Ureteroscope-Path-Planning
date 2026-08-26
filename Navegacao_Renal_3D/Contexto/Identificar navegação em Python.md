@@ -469,6 +469,40 @@ Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
   `Unity/Documentation/Previews`;
 - relatório `marco3_validation.json` aprovado sem erros.
 
+### Marco 3.1 — integração visual Meshy
+
+Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
+
+- a malha navegável `Kidney_Game_v002`, o collider interno, a rota, a pedra e
+  as âncoras não foram refeitos nem alterados;
+- a fonte Meshy de alta resolução possui `15.979` triângulos e `46,5 cm`;
+- o pipeline Maya corrige componentes non-manifold, transfere UVs do pacote
+  texturizado anterior e separa as partes anatômicas;
+- a conversão de lateralidade Maya/Unity foi tratada no exportador: o rim
+  externo fechado correto é o rim direito enviado ao jogo;
+- a cena Maya editável é
+  `Candidates/Meshy_Urinary_System_v002/Source/Meshy_Urinary_System_v002.ma`;
+- o FBX visual contém `Meshy_RightKidney` e
+  `Meshy_UretersAndBladder`, totalizando `11.026` triângulos e `7.931` UVs;
+- o rim esquerdo Meshy e a malha doadora permanecem ocultos em
+  `REFERENCE_ONLY` e não entram no FBX do Unity;
+- Base Color, Normal, Metallic e Roughness foram preservados; um Mask Map URP
+  foi gerado com Metallic em R e `1 - Roughness` em A;
+- o novo conjunto usa escala uniforme `5×`, camada `KidneyExterior`, material
+  URP compartilhado e nenhum collider;
+- o rim ativo aprovado foi preservado e reposicionado somente para alinhar o
+  conjunto, ficando simétrico ao rim direito em `x = -0,496/+0,496`;
+- os assets procedurais anteriores continuam no repositório como fallback,
+  mas não são instanciados na cena;
+- `58` verificações passaram, incluindo colisão, contatos, reset, modos,
+  cursor e equivalência em 30/60/120 FPS;
+- relatório `marco31_validation.json` e três capturas automáticas foram
+  registrados sem controlar a janela do usuário;
+- SHA-256 do interior v002 preservado:
+  `174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c`;
+- SHA-256 do visual Meshy sincronizado Maya/Unity:
+  `f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2`.
+
 ### Marco 4 — gameplay
 
 Estados da partida, cinco colisões, flash vermelho, rota, captura, vitória,

@@ -1,4 +1,4 @@
-# Navegação Renal 3D — Marco 3
+# Navegação Renal 3D — Marco 3.1
 
 Projeto desenvolvido do zero com modelo renal `v002` e protótipo navegável no Unity.
 
@@ -23,8 +23,8 @@ O projeto inclui a fundação do Marco 2 e a navegação realista do Marco 3:
 - modo Exploração com câmera livre dentro e fora dos rins;
 - nível fácil, contador de cinco contatos e captura da pedra com Espaço;
 - dois rins, dois ureteres e bexiga na composição global;
-- acabamento vermelho orgânico no rim direito, nos ureteres e na bexiga, sem
-  alterar o visual já aprovado do rim ativo superior esquerdo;
+- sistema Meshy texturizado no rim direito, ureteres e bexiga, sem alterar o
+  visual já aprovado do rim ativo superior esquerdo;
 - textura interna original com base color e normal map, minimapa provisório,
   materiais URP e iluminação da ponta;
 - prefab `KidneyLevel` com escala física preservada e raiz visual `5x`.
@@ -33,9 +33,9 @@ O rim ativo usa `Unity/Assets/Art/Kidney/Models/Kidney_Game_v002.fbx`, cópia
 byte a byte do FBX do Maya. O segundo rim, os ureteres longos e a bexiga formam
 a composição visual externa; somente o rim ativo é navegável nesta etapa.
 
-Instruções, controles e validação atual estão em
-`Unity/Documentation/MARCO_3.md`. O Marco 2 permanece documentado em
-`Unity/Documentation/MARCO_2.md`.
+Instruções e validação da integração atual estão em
+`Unity/Documentation/MARCO_3_1.md`. A navegação permanece documentada em
+`Unity/Documentation/MARCO_3.md`.
 
 ## Pipeline
 
