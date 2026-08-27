@@ -19,3 +19,4 @@ Recordings/
 *.VC.db
 unity-create-project.log
 marco2-*.log
+Documentation/*.log

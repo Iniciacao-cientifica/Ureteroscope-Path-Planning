@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 namespace NavegacaoRenal
 {
@@ -19,10 +18,12 @@ namespace NavegacaoRenal
         [SerializeField] private float steeringSmoothTime = 0.12f;
         [SerializeField] private float rollSpeed = 55f;
         [SerializeField] private KidneyGameManager gameManager;
+        [SerializeField] private MonoBehaviour inputSourceBehaviour;
 
         private Vector2 smoothedSteeringVelocity;
         private Vector2 steeringSmoothDampVelocity;
         private bool wallContactLatched;
+        private IEndoscopeInputSource inputSource;
 
         public float ForwardSpeed => forwardSpeed;
         public float TipRadius => tipRadius;
@@ -34,11 +35,18 @@ namespace NavegacaoRenal
         public float RollSpeed => rollSpeed;
         public int CollisionMask => collisionMask.value;
         public bool IsWallContactLatched => wallContactLatched;
+        public MonoBehaviour InputSourceBehaviour => inputSourceBehaviour;
 
         public void Configure(KidneyGameManager manager, LayerMask kidneyCollisionMask)
         {
             gameManager = manager;
             collisionMask = kidneyCollisionMask;
+        }
+
+        public void ConfigureInputSource(MonoBehaviour source)
+        {
+            inputSourceBehaviour = source;
+            inputSource = source as IEndoscopeInputSource;
         }
 
         public void ResetTo(Transform anchor)
@@ -61,6 +69,7 @@ namespace NavegacaoRenal
         private void Awake()
         {
             Physics.queriesHitBackfaces = true;
+            inputSource = inputSourceBehaviour as IEndoscopeInputSource;
         }
 
         private void OnDisable()
@@ -70,47 +79,44 @@ namespace NavegacaoRenal
 
         private void Update()
         {
-            HandleCursor();
+            if (inputSource == null)
+                inputSource = inputSourceBehaviour as IEndoscopeInputSource;
+            EndoscopeInputFrame input = inputSource != null ? inputSource.ReadFrame() : default;
+            HandleCursor(input);
 
-            if (gameManager == null || !gameManager.CanNavigate || Keyboard.current == null)
+            if (gameManager == null || !gameManager.CanNavigate)
                 return;
 
             float deltaTime = Time.deltaTime;
-            ApplySteering(deltaTime);
+            ApplySteering(input, deltaTime);
 
-            float movementDirection = 0f;
-            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) movementDirection += 1f;
-            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) movementDirection -= 1f;
-
-            if (!Mathf.Approximately(movementDirection, 0f))
-                TryMoveDistance(movementDirection * forwardSpeed * deltaTime);
+            if (!Mathf.Approximately(input.Advance, 0f))
+                TryMoveDistance(input.Advance * forwardSpeed * deltaTime);
             else
                 UpdateContactLatch();
         }
 
-        private void HandleCursor()
+        private void HandleCursor(EndoscopeInputFrame input)
         {
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (input.CursorReleasePressed)
             {
                 ReleaseCursor();
                 return;
             }
 
-            if (gameManager != null && gameManager.CanNavigate && Mouse.current != null &&
-                Mouse.current.leftButton.wasPressedThisFrame)
+            if (gameManager != null && gameManager.CanNavigate && input.CursorLockPressed)
             {
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
         }
 
-        private void ApplySteering(float deltaTime)
+        private void ApplySteering(EndoscopeInputFrame input, float deltaTime)
         {
             Vector2 targetAngularVelocity = Vector2.zero;
-            if (Cursor.lockState == CursorLockMode.Locked && Mouse.current != null)
+            if (Cursor.lockState == CursorLockMode.Locked)
             {
-                Vector2 mouseDelta = Mouse.current.delta.ReadValue();
-                targetAngularVelocity = new Vector2(-mouseDelta.y, mouseDelta.x) * mouseRateGain;
+                targetAngularVelocity = new Vector2(-input.SteeringDelta.y, input.SteeringDelta.x) * mouseRateGain;
                 targetAngularVelocity = Vector2.ClampMagnitude(targetAngularVelocity, maximumSteeringSpeed);
             }
 
@@ -128,10 +134,7 @@ namespace NavegacaoRenal
                 0f,
                 Space.Self);
 
-            float roll = 0f;
-            if (Keyboard.current.qKey.isPressed) roll += 1f;
-            if (Keyboard.current.eKey.isPressed) roll -= 1f;
-            transform.Rotate(0f, 0f, roll * rollSpeed * deltaTime, Space.Self);
+            transform.Rotate(0f, 0f, input.Roll * rollSpeed * deltaTime, Space.Self);
         }
 
         public bool TryMoveDistance(float signedDistance)

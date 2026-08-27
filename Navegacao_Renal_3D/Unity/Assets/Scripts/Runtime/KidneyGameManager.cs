@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 namespace NavegacaoRenal
@@ -19,21 +18,60 @@ namespace NavegacaoRenal
         [Header("Easy level")]
         [SerializeField] private int maximumWallContacts = 5;
         [SerializeField] private float captureDistance = 0.10f;
+        [SerializeField] private float captureHoldDuration = 1f;
 
+        [Header("Marco 4")]
+        [SerializeField] private MonoBehaviour inputSourceBehaviour;
+        [SerializeField] private VirtualGripperController virtualGripper;
+        [SerializeField] private KidneyGameUI gameUI;
+        [SerializeField] private KidneyAudioFeedback audioFeedback;
+
+        private IEndoscopeInputSource inputSource;
         private KidneyGameMode currentMode;
+        // Playing keeps the edit-mode Marco 3 validators backwards compatible.
+        // Start() always applies the launch flow and enters Ready in Realistic mode.
+        private KidneySessionState sessionState = KidneySessionState.Playing;
+        private KidneySessionState stateBeforePause = KidneySessionState.Playing;
         private int wallContacts;
-        private bool won;
-        private bool lost;
-        private bool paused;
-        private float startedAt;
-        private float redFlashUntil;
+        private float elapsedTime;
+        private float captureProgress;
+        private Transform stoneOriginalParent;
+        private Vector3 stoneOriginalLocalPosition;
+        private Quaternion stoneOriginalLocalRotation;
+        private Vector3 stoneOriginalLocalScale;
+        private bool stonePoseCached;
+        private bool stoneCaptured;
 
-        public bool CanNavigate => currentMode == KidneyGameMode.Realistic && !won && !lost && !paused;
+        public bool CanNavigate => currentMode == KidneyGameMode.Realistic && sessionState == KidneySessionState.Playing;
         public KidneyGameMode CurrentMode => currentMode;
+        public KidneySessionState SessionState => sessionState;
         public int WallContacts => wallContacts;
-        public bool IsPaused => paused;
+        public int MaximumWallContacts => maximumWallContacts;
+        public float CaptureDistance => captureDistance;
+        public float CaptureHoldDuration => captureHoldDuration;
+        public float CaptureProgress01 => captureProgress;
+        public float ElapsedTime => elapsedTime;
+        public bool IsPaused => sessionState == KidneySessionState.Paused;
+        public bool IsWithinCaptureRange => probe != null && targetStone != null &&
+                                            Vector3.Distance(probe.position, targetStone.position) <= captureDistance;
+        public bool RouteVisible => routeGuide != null && routeGuide.activeSelf;
+        public bool MinimapVisible => minimapCamera != null && minimapCamera.activeSelf;
+        public bool HasCapturedStone => stoneCaptured && virtualGripper != null && targetStone != null &&
+                                        virtualGripper.CaptureAnchor != null &&
+                                        Vector3.Distance(targetStone.position, virtualGripper.CaptureAnchor.position) < 0.0001f;
+        public MonoBehaviour InputSourceBehaviour => inputSourceBehaviour;
+        public VirtualGripperController VirtualGripper => virtualGripper;
+        public KidneyGameUI GameUI => gameUI;
+        public KidneyAudioFeedback AudioFeedback => audioFeedback;
 
-        public void Configure(GameObject realRig, GameObject freeRig, Transform probeTransform, Transform start, Transform stone, GameObject route, GameObject minimap)
+        public void Configure(
+            GameObject realRig,
+            GameObject freeRig,
+            Transform probeTransform,
+            Transform start,
+            Transform stone,
+            GameObject route,
+            GameObject minimap)
         {
             realisticRig = realRig;
             explorationRig = freeRig;
@@ -42,50 +80,117 @@ namespace NavegacaoRenal
             targetStone = stone;
             routeGuide = route;
             minimapCamera = minimap;
+            CacheStonePose();
+        }
+
+        public void ConfigureGameplay(
+            MonoBehaviour source,
+            VirtualGripperController gripper,
+            KidneyGameUI ui,
+            KidneyAudioFeedback feedback)
+        {
+            inputSourceBehaviour = source;
+            inputSource = source as IEndoscopeInputSource;
+            virtualGripper = gripper;
+            gameUI = ui;
+            audioFeedback = feedback;
+        }
+
+        private void Awake()
+        {
+            inputSource = inputSourceBehaviour as IEndoscopeInputSource;
+            CacheStonePose();
         }
 
         private void Start()
         {
             Application.targetFrameRate = 120;
-            startedAt = Time.unscaledTime;
-            if (routeGuide != null) routeGuide.SetActive(false);
-            SetMode(initialMode, true);
+            KidneyGameMode launchMode = KidneyLaunchContext.Consume(initialMode);
+            ApplyMode(launchMode, true);
+            SetRouteVisible(true);
+            SetMinimapVisible(true);
+
+            if (launchMode == KidneyGameMode.Realistic)
+                PrepareAttempt();
+            else
+                sessionState = KidneySessionState.Playing;
+
+            gameUI?.RefreshImmediate();
         }
 
         private void Update()
         {
-            if (Keyboard.current == null)
+            if (inputSource == null)
+                inputSource = inputSourceBehaviour as IEndoscopeInputSource;
+
+            EndoscopeInputFrame input = inputSource != null ? inputSource.ReadFrame() : default;
+            if (input.RoutePressed) ToggleRoute();
+            if (input.MinimapPressed) ToggleMinimap();
+
+            if (currentMode == KidneyGameMode.Exploration)
                 return;
 
-            if (Keyboard.current.f1Key.wasPressedThisFrame) SetMode(KidneyGameMode.Realistic);
-            if (Keyboard.current.f2Key.wasPressedThisFrame) SetMode(KidneyGameMode.Exploration);
-            if (Keyboard.current.pKey.wasPressedThisFrame)
-                SetPaused(!paused);
-            if (Keyboard.current.rKey.wasPressedThisFrame) ResetAttempt();
-            if (Keyboard.current.tKey.wasPressedThisFrame && routeGuide != null) routeGuide.SetActive(!routeGuide.activeSelf);
-            if (Keyboard.current.mKey.wasPressedThisFrame && minimapCamera != null) minimapCamera.SetActive(!minimapCamera.activeSelf);
-
-            if (CanNavigate && Keyboard.current.spaceKey.wasPressedThisFrame && targetStone != null && probe != null)
+            if (input.PausePressed)
             {
-                if (Vector3.Distance(probe.position, targetStone.position) <= captureDistance)
-                {
-                    won = true;
-                    MouseEndoscopeController.ReleaseCursor();
-                }
+                if (sessionState == KidneySessionState.Paused) ResumeAttempt();
+                else if (sessionState == KidneySessionState.Playing) SetPaused(true);
+            }
+            if (input.ResetPressed) ResetAttempt();
+
+            if (sessionState == KidneySessionState.Playing)
+            {
+                elapsedTime += Time.deltaTime;
+                ProcessCapture(Time.deltaTime, input.CaptureHeld);
+            }
+            else if (captureProgress > 0f)
+            {
+                CancelCapture();
             }
         }
 
-        public void SetMode(KidneyGameMode mode, bool force = false)
+        private void LateUpdate()
         {
-            if (!force && currentMode == mode)
+            if (!stoneCaptured || targetStone == null || virtualGripper == null || virtualGripper.CaptureAnchor == null)
+                return;
+            targetStone.SetPositionAndRotation(virtualGripper.CaptureAnchor.position, virtualGripper.CaptureAnchor.rotation);
+        }
+
+        public void PrepareAttempt()
+        {
+            RestoreStone();
+            wallContacts = 0;
+            elapsedTime = 0f;
+            CancelCapture();
+            ResetProbePosition();
+            SetRouteVisible(true);
+            SetMinimapVisible(true);
+            sessionState = KidneySessionState.Ready;
+            MouseEndoscopeController.ReleaseCursor();
+            gameUI?.RefreshImmediate();
+        }
+
+        public void BeginAttempt()
+        {
+            if (currentMode != KidneyGameMode.Realistic)
                 return;
 
-            currentMode = mode;
-            if (mode == KidneyGameMode.Exploration)
-                MouseEndoscopeController.ReleaseCursor();
-            if (realisticRig != null) realisticRig.SetActive(mode == KidneyGameMode.Realistic);
-            if (explorationRig != null) explorationRig.SetActive(mode == KidneyGameMode.Exploration);
-            if (mode == KidneyGameMode.Realistic) ResetProbePosition();
+            RestoreStone();
+            wallContacts = 0;
+            elapsedTime = 0f;
+            CancelCapture();
+            ResetProbePosition();
+            sessionState = KidneySessionState.Playing;
+            gameUI?.RefreshImmediate();
+        }
+
+        public void ResumeAttempt()
+        {
+            if (sessionState != KidneySessionState.Paused)
+                return;
+            sessionState = stateBeforePause == KidneySessionState.Ready
+                ? KidneySessionState.Ready
+                : KidneySessionState.Playing;
+            gameUI?.RefreshImmediate();
         }
 
         public void ReportWallContact(Vector3 point)
@@ -94,29 +199,125 @@ namespace NavegacaoRenal
                 return;
 
             wallContacts++;
-            redFlashUntil = Time.unscaledTime + 0.4f;
+            gameUI?.ShowWallFlash(0.4f);
+            audioFeedback?.PlayWallContact();
             if (wallContacts >= maximumWallContacts)
             {
-                lost = true;
+                wallContacts = maximumWallContacts;
+                sessionState = KidneySessionState.Lost;
+                CancelCapture();
+                audioFeedback?.PlayDefeat();
                 MouseEndoscopeController.ReleaseCursor();
+                gameUI?.RefreshImmediate();
             }
+        }
+
+        public void ProcessCapture(float deltaTime, bool captureHeld)
+        {
+            if (!CanNavigate || !captureHeld || !IsWithinCaptureRange)
+            {
+                CancelCapture();
+                return;
+            }
+
+            captureProgress = Mathf.Clamp01(captureProgress + Mathf.Max(0f, deltaTime) / Mathf.Max(0.01f, captureHoldDuration));
+            virtualGripper?.SetClosure(captureProgress);
+            if (captureProgress >= 1f)
+                CompleteCapture();
         }
 
         public void SetPaused(bool value)
         {
-            paused = value;
-            if (paused)
+            if (currentMode != KidneyGameMode.Realistic)
+                return;
+
+            if (value)
+            {
+                if (sessionState == KidneySessionState.Won || sessionState == KidneySessionState.Lost)
+                    return;
+                stateBeforePause = sessionState;
+                sessionState = KidneySessionState.Paused;
+                CancelCapture();
                 MouseEndoscopeController.ReleaseCursor();
+            }
+            else if (sessionState == KidneySessionState.Paused)
+            {
+                sessionState = stateBeforePause == KidneySessionState.Ready
+                    ? KidneySessionState.Ready
+                    : KidneySessionState.Playing;
+            }
+            gameUI?.RefreshImmediate();
         }
 
         public void ResetAttempt()
         {
-            wallContacts = 0;
-            won = false;
-            lost = false;
-            paused = false;
-            startedAt = Time.unscaledTime;
-            ResetProbePosition();
+            if (currentMode == KidneyGameMode.Realistic) PrepareAttempt();
+            else ApplyMode(KidneyGameMode.Exploration, true);
+        }
+
+        // Preserved for Marco 2/3 validation and editor tooling. Runtime mode selection
+        // now happens only through the main menu.
+        public void SetMode(KidneyGameMode mode, bool force = false)
+        {
+            if (!force && currentMode == mode)
+                return;
+            ApplyMode(mode, true);
+            sessionState = KidneySessionState.Playing;
+            if (mode == KidneyGameMode.Realistic) ResetProbePosition();
+            gameUI?.RefreshImmediate();
+        }
+
+        public void ToggleRoute() => SetRouteVisible(!RouteVisible);
+        public void ToggleMinimap() => SetMinimapVisible(!MinimapVisible);
+
+        public void SetRouteVisible(bool visible)
+        {
+            if (routeGuide != null) routeGuide.SetActive(visible);
+        }
+
+        public void SetMinimapVisible(bool visible)
+        {
+            if (minimapCamera != null) minimapCamera.SetActive(visible);
+        }
+
+        public void ReturnToMenu()
+        {
+            MouseEndoscopeController.ReleaseCursor();
+            KidneyLaunchContext.Reset();
+            SceneManager.LoadScene("MainMenu");
+        }
+
+        private void ApplyMode(KidneyGameMode mode, bool resetProbe)
+        {
+            currentMode = mode;
+            if (realisticRig != null) realisticRig.SetActive(mode == KidneyGameMode.Realistic);
+            if (explorationRig != null) explorationRig.SetActive(mode == KidneyGameMode.Exploration);
+            if (mode == KidneyGameMode.Exploration) MouseEndoscopeController.ReleaseCursor();
+            if (resetProbe && mode == KidneyGameMode.Realistic) ResetProbePosition();
+        }
+
+        private void CompleteCapture()
+        {
+            captureProgress = 1f;
+            virtualGripper?.SetClosure(1f);
+            Transform anchor = virtualGripper != null ? virtualGripper.CaptureAnchor : null;
+            if (targetStone != null && anchor != null)
+            {
+                targetStone.SetPositionAndRotation(anchor.position, anchor.rotation);
+                stoneCaptured = true;
+            }
+
+            audioFeedback?.PlayCapture();
+            audioFeedback?.PlayVictory();
+            sessionState = KidneySessionState.Won;
+            MouseEndoscopeController.ReleaseCursor();
+            gameUI?.RefreshImmediate();
+        }
+
+        private void CancelCapture()
+        {
+            captureProgress = 0f;
+            virtualGripper?.ResetGripper();
         }
 
         private void ResetProbePosition()
@@ -129,49 +330,34 @@ namespace NavegacaoRenal
             else probe.SetPositionAndRotation(startAnchor.position, startAnchor.rotation);
         }
 
+        private void CacheStonePose()
+        {
+            if (stonePoseCached || targetStone == null)
+                return;
+            stoneOriginalParent = targetStone.parent;
+            stoneOriginalLocalPosition = targetStone.localPosition;
+            stoneOriginalLocalRotation = targetStone.localRotation;
+            stoneOriginalLocalScale = targetStone.localScale;
+            stonePoseCached = true;
+        }
+
+        private void RestoreStone()
+        {
+            CacheStonePose();
+            if (!stonePoseCached || targetStone == null)
+                return;
+            stoneCaptured = false;
+            if (targetStone.parent != stoneOriginalParent)
+                targetStone.SetParent(stoneOriginalParent, false);
+            targetStone.localPosition = stoneOriginalLocalPosition;
+            targetStone.localRotation = stoneOriginalLocalRotation;
+            targetStone.localScale = stoneOriginalLocalScale;
+        }
+
         private void OnApplicationFocus(bool hasFocus)
         {
             if (!hasFocus)
                 MouseEndoscopeController.ReleaseCursor();
-        }
-
-        private void OnGUI()
-        {
-            GUIStyle box = new GUIStyle(GUI.skin.box) { fontSize = 16, alignment = TextAnchor.UpperLeft };
-            GUIStyle title = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold };
-
-            GUI.Box(new Rect(18, 18, 375, 225), GUIContent.none, box);
-            GUI.Label(new Rect(34, 28, 340, 30), "Navegacao Renal 3D - Facil", title);
-            GUI.Label(new Rect(34, 62, 340, 25), currentMode == KidneyGameMode.Realistic ? "Modo: Realista" : "Modo: Exploracao livre");
-            GUI.Label(new Rect(34, 88, 340, 25), $"Tempo: {Time.unscaledTime - startedAt:0.0}s   Toques: {wallContacts}/{maximumWallContacts}");
-
-            if (GUI.Button(new Rect(34, 120, 155, 32), "F1 - Realista")) SetMode(KidneyGameMode.Realistic);
-            if (GUI.Button(new Rect(205, 120, 170, 32), "F2 - Exploracao")) SetMode(KidneyGameMode.Exploration);
-            GUI.Label(new Rect(34, 160, 340, 25), currentMode == KidneyGameMode.Realistic
-                ? "Clique: capturar mouse | Esc: liberar | W/S: mover | Q/E: girar"
-                : "Botao direito + mouse | WASD/QE | Shift: acelerar");
-            if (GUI.Button(new Rect(34, 192, 155, 30), "T - Mostrar rota"))
-                if (routeGuide != null) routeGuide.SetActive(!routeGuide.activeSelf);
-            if (GUI.Button(new Rect(205, 192, 170, 30), "M - Minimap"))
-                if (minimapCamera != null) minimapCamera.SetActive(!minimapCamera.activeSelf);
-
-            if (won || lost || paused)
-            {
-                string message = won ? "PEDRA CAPTURADA!" : lost ? "LIMITE DE TOQUES ATINGIDO" : "PAUSADO";
-                GUI.Box(new Rect(Screen.width * 0.5f - 180, Screen.height * 0.5f - 55, 360, 110), message);
-                if (GUI.Button(new Rect(Screen.width * 0.5f - 90, Screen.height * 0.5f, 180, 34), "R - Reiniciar")) ResetAttempt();
-            }
-
-            if (Time.unscaledTime < redFlashUntil)
-            {
-                Color previous = GUI.color;
-                GUI.color = new Color(1f, 0.05f, 0.05f, 0.72f);
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, 12), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(0, Screen.height - 12, Screen.width, 12), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(0, 0, 12, Screen.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(Screen.width - 12, 0, 12, Screen.height), Texture2D.whiteTexture);
-                GUI.color = previous;
-            }
         }
     }
 }

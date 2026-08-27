@@ -524,8 +524,26 @@ Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
 
 ### Marco 4 — gameplay
 
-Estados da partida, cinco colisões, flash vermelho, rota, captura, vitória,
-derrota, pausa e reinício.
+Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
+
+- estados `Ready`, `Playing`, `Paused`, `Won` e `Lost`;
+- menu Canvas com entradas separadas para Realista e Exploração;
+- tentativa Realista inicia somente após a tela de preparação;
+- rota e minimapa ligados inicialmente e alternáveis por T/M;
+- cinco contatos encerram a tentativa, com flash e som original;
+- garra virtual simples e animada na ponta;
+- captura exige segurar Espaço por `1 segundo` dentro de `0,10 m` da pedra;
+- soltar ou afastar cancela a captura; concluir prende visualmente a pedra à
+  âncora da garra;
+- pausa congela navegação, captura e cronômetro;
+- resultado mostra tempo e contatos, sem pontuação persistente;
+- Exploração não conta tempo, contatos, captura ou resultado;
+- `IEndoscopeInputSource` e `EndoscopeInputFrame` preparam a futura fonte
+  serial sem implementar hardware antecipadamente;
+- interface provisória `OnGUI` substituída por Canvas em português;
+- `65` verificações anteriores e `38` novas passaram, totalizando `103`;
+- hashes dos FBX v002, v003 e Meshy permanecem inalterados;
+- relatório `marco4_validation.json` e seis capturas automáticas registrados.
 
 ### Marco 5 — exploração e minimapa
 
@@ -553,6 +571,5 @@ Quest.
 
 ## Próxima ação
 
-Planejar e implementar o gameplay final do Marco 4. Após o Marco 4, sincronizar
-no Maya o sistema completo com dois rins, ureteres e bexiga antes do Marco 5.
-ESP32, MPU, encoder e garra continuam fora desta etapa.
+Apresentar o Marco 4 para aprovação e parar. Somente depois, planejar o Marco
+5. ESP32, MPU, encoder, servo e garra física continuam reservados ao Marco 6.
