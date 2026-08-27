@@ -27,10 +27,28 @@ namespace NavegacaoRenal
         [SerializeField] private Button menuResultButton;
         [SerializeField] private Button menuExplorationButton;
 
+        [Header("Marco 5")]
+        [SerializeField] private ExplorationVisibilityController explorationVisibility;
+        [SerializeField] private KidneyMinimapPresenter minimapPresenter;
+        [SerializeField] private GameObject explorationContent;
+        [SerializeField] private Text exteriorStateText;
+        [SerializeField] private Text interiorStateText;
+        [SerializeField] private Text routeStateText;
+        [SerializeField] private Text stoneStateText;
+        [SerializeField] private Button exteriorButton;
+        [SerializeField] private Button interiorButton;
+        [SerializeField] private Button routeButton;
+        [SerializeField] private Button stoneButton;
+        [SerializeField] private Button collapseButton;
+
         private float flashUntil;
 
         public bool IsConfigured => gameManager != null && readyPanel != null && hudPanel != null &&
                                     pausePanel != null && resultPanel != null && captureFill != null;
+        public bool IsMarco5Configured => IsConfigured && explorationVisibility != null && minimapPresenter != null &&
+                                          explorationPanel != null && explorationContent != null &&
+                                          exteriorButton != null && interiorButton != null && routeButton != null &&
+                                          stoneButton != null && collapseButton != null;
 
         public void Configure(
             KidneyGameManager manager,
@@ -78,6 +96,27 @@ namespace NavegacaoRenal
             menuExplorationButton = menuExploration;
         }
 
+        public void ConfigureMarco5(ExplorationVisibilityController visibility, KidneyMinimapPresenter minimap,
+            GameObject panel, GameObject content, Text exteriorState, Text interiorState, Text routeState,
+            Text stoneState, Button exterior, Button interior, Button route, Button stone, Button collapse,
+            Button menuExploration)
+        {
+            explorationVisibility = visibility;
+            minimapPresenter = minimap;
+            explorationPanel = panel;
+            explorationContent = content;
+            exteriorStateText = exteriorState;
+            interiorStateText = interiorState;
+            routeStateText = routeState;
+            stoneStateText = stoneState;
+            exteriorButton = exterior;
+            interiorButton = interior;
+            routeButton = route;
+            stoneButton = stone;
+            collapseButton = collapse;
+            menuExplorationButton = menuExploration;
+        }
+
         private void Awake()
         {
             BindButtons(true);
@@ -120,6 +159,8 @@ namespace NavegacaoRenal
             SetActive(pausePanel, !exploration && state == KidneySessionState.Paused);
             SetActive(resultPanel, !exploration && (state == KidneySessionState.Won || state == KidneySessionState.Lost));
             SetActive(explorationPanel, exploration);
+            if (explorationContent != null && explorationVisibility != null)
+                SetActive(explorationContent, explorationVisibility.PanelExpanded);
             SetActive(capturePanel, !exploration && state == KidneySessionState.Playing && gameManager.IsWithinCaptureRange);
 
             if (timerText != null) timerText.text = $"Tempo  {gameManager.ElapsedTime:0.0}s";
@@ -132,6 +173,14 @@ namespace NavegacaoRenal
                 resultTitleText.text = state == KidneySessionState.Won ? "PEDRA CAPTURADA" : "LIMITE DE CONTATOS";
             if (resultSummaryText != null)
                 resultSummaryText.text = $"Tempo: {gameManager.ElapsedTime:0.0}s\nContatos: {gameManager.WallContacts}/{gameManager.MaximumWallContacts}";
+
+            if (explorationVisibility != null)
+            {
+                if (exteriorStateText != null) exteriorStateText.text = $"1  Exterior: {ExteriorLabel(explorationVisibility.ExteriorMode)}";
+                if (interiorStateText != null) interiorStateText.text = $"2  Sistema coletor: {OnOff(explorationVisibility.CollectingSystemVisible)}";
+                if (routeStateText != null) routeStateText.text = $"3  Rota: {OnOff(gameManager.RouteVisible)}";
+                if (stoneStateText != null) stoneStateText.text = $"4  Pedra: {OnOff(explorationVisibility.StoneVisible)}";
+            }
         }
 
         private void BindButtons(bool bind)
@@ -145,6 +194,14 @@ namespace NavegacaoRenal
             Bind(menuPauseButton, gameManager.ReturnToMenu, bind);
             Bind(menuResultButton, gameManager.ReturnToMenu, bind);
             Bind(menuExplorationButton, gameManager.ReturnToMenu, bind);
+            if (explorationVisibility != null)
+            {
+                Bind(exteriorButton, explorationVisibility.CycleExteriorMode, bind);
+                Bind(interiorButton, explorationVisibility.ToggleCollectingSystem, bind);
+                Bind(routeButton, gameManager.ToggleRoute, bind);
+                Bind(stoneButton, explorationVisibility.ToggleStone, bind);
+                Bind(collapseButton, explorationVisibility.TogglePanel, bind);
+            }
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action, bool bind)
@@ -159,6 +216,14 @@ namespace NavegacaoRenal
         {
             if (target != null && target.activeSelf != active)
                 target.SetActive(active);
+        }
+
+        private static string OnOff(bool value) => value ? "visível" : "oculto";
+
+        private static string ExteriorLabel(ExteriorVisibilityMode mode)
+        {
+            return mode == ExteriorVisibilityMode.Transparent ? "transparente" :
+                mode == ExteriorVisibilityMode.Opaque ? "opaco" : "oculto";
         }
     }
 }

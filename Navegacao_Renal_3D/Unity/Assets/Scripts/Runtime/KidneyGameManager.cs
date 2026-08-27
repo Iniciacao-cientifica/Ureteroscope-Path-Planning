@@ -26,6 +26,11 @@ namespace NavegacaoRenal
         [SerializeField] private KidneyGameUI gameUI;
         [SerializeField] private KidneyAudioFeedback audioFeedback;
 
+        [Header("Marco 5")]
+        [SerializeField] private FreeFlyCameraController explorationController;
+        [SerializeField] private ExplorationVisibilityController explorationVisibility;
+        [SerializeField] private KidneyMinimapPresenter minimapPresenter;
+
         private IEndoscopeInputSource inputSource;
         private KidneyGameMode currentMode;
         // Playing keeps the edit-mode Marco 3 validators backwards compatible.
@@ -55,7 +60,9 @@ namespace NavegacaoRenal
         public bool IsWithinCaptureRange => probe != null && targetStone != null &&
                                             Vector3.Distance(probe.position, targetStone.position) <= captureDistance;
         public bool RouteVisible => routeGuide != null && routeGuide.activeSelf;
-        public bool MinimapVisible => minimapCamera != null && minimapCamera.activeSelf;
+        public bool MinimapVisible => minimapPresenter != null
+            ? minimapPresenter.IsVisible
+            : minimapCamera != null && minimapCamera.activeSelf;
         public bool HasCapturedStone => stoneCaptured && virtualGripper != null && targetStone != null &&
                                         virtualGripper.CaptureAnchor != null &&
                                         Vector3.Distance(targetStone.position, virtualGripper.CaptureAnchor.position) < 0.0001f;
@@ -63,6 +70,9 @@ namespace NavegacaoRenal
         public VirtualGripperController VirtualGripper => virtualGripper;
         public KidneyGameUI GameUI => gameUI;
         public KidneyAudioFeedback AudioFeedback => audioFeedback;
+        public FreeFlyCameraController ExplorationController => explorationController;
+        public ExplorationVisibilityController ExplorationVisibility => explorationVisibility;
+        public KidneyMinimapPresenter MinimapPresenter => minimapPresenter;
 
         public void Configure(
             GameObject realRig,
@@ -94,6 +104,14 @@ namespace NavegacaoRenal
             virtualGripper = gripper;
             gameUI = ui;
             audioFeedback = feedback;
+        }
+
+        public void ConfigureMarco5(FreeFlyCameraController freeController,
+            ExplorationVisibilityController visibility, KidneyMinimapPresenter presenter)
+        {
+            explorationController = freeController;
+            explorationVisibility = visibility;
+            minimapPresenter = presenter;
         }
 
         private void Awake()
@@ -273,11 +291,13 @@ namespace NavegacaoRenal
         public void SetRouteVisible(bool visible)
         {
             if (routeGuide != null) routeGuide.SetActive(visible);
+            if (minimapPresenter != null) minimapPresenter.SetRouteVisible(visible);
         }
 
         public void SetMinimapVisible(bool visible)
         {
-            if (minimapCamera != null) minimapCamera.SetActive(visible);
+            if (minimapPresenter != null) minimapPresenter.SetVisible(visible);
+            else if (minimapCamera != null) minimapCamera.SetActive(visible);
         }
 
         public void ReturnToMenu()
@@ -292,8 +312,14 @@ namespace NavegacaoRenal
             currentMode = mode;
             if (realisticRig != null) realisticRig.SetActive(mode == KidneyGameMode.Realistic);
             if (explorationRig != null) explorationRig.SetActive(mode == KidneyGameMode.Exploration);
-            if (mode == KidneyGameMode.Exploration) MouseEndoscopeController.ReleaseCursor();
+            if (mode == KidneyGameMode.Exploration)
+            {
+                MouseEndoscopeController.ReleaseCursor();
+                explorationController?.ResetViewImmediate();
+                explorationVisibility?.ResetDefaults();
+            }
             if (resetProbe && mode == KidneyGameMode.Realistic) ResetProbePosition();
+            minimapPresenter?.RefreshMarker();
         }
 
         private void CompleteCapture()

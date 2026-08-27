@@ -547,8 +547,22 @@ Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
 
 ### Marco 5 — exploração e minimapa
 
-Câmera livre, entrada/saída das malhas, controles de visibilidade, conjunto com
-dois rins/ureteres/bexiga e minimapa inclinado.
+Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
+
+- câmera livre sem colisão, com clique para prender o cursor e `Esc` para
+  liberar;
+- `WASD`, `Q/E`, `Shift` e recentralização suave por `F`;
+- visão geral inicial com dois rins, dois ureteres e bexiga;
+- exterior transparente, opaco ou oculto;
+- controles independentes de sistema coletor, rota e pedra;
+- painel Canvas recolhível com botões e atalhos;
+- minimapa em `RenderTexture` 512×512, isolado em `MinimapOnly`;
+- vista fixa inclinada do rim ativo, rota ciano e seta de posição/orientação;
+- indicador preso à borda quando a câmera livre sai do enquadramento;
+- minimapa disponível nos modos Realista e Exploração;
+- `103` verificações anteriores e `30` novas passaram, totalizando `133`;
+- hashes dos FBX v002, v003 e Meshy permanecem inalterados;
+- relatório `marco5_validation.json` e cinco capturas registrados.
 
 ### Marco 6 — polimento e integração futura
 
@@ -571,5 +585,6 @@ Quest.
 
 ## Próxima ação
 
-Apresentar o Marco 4 para aprovação e parar. Somente depois, planejar o Marco
-5. ESP32, MPU, encoder, servo e garra física continuam reservados ao Marco 6.
+Apresentar o Marco 5 para aprovação e parar. O Marco 6 deverá ser planejado
+antes de implementar polimento, build Windows, ESP32, MPU, encoder, servo,
+garra física ou Quest.
