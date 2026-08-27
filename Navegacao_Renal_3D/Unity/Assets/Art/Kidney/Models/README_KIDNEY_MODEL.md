@@ -1,15 +1,16 @@
-# Kidney Game v002
+# Kidney Game v003
 
-O `Kidney_Game_v002` é o modelo autoritativo usado pelo prefab e pela cena do
-Marco 2. O v001 foi mantido apenas como histórico e não deve ser colocado na cena.
+O `Kidney_Game_v003` é o modelo autoritativo usado pelo prefab e pela cena do
+Marco 3.2. A v002 permanece preservada como a versão aprovada anterior.
 
-- `Kidney_Game_v002.fbx`: cópia byte a byte do FBX exportado pelo Maya.
-- `Kidney_Game_v002_manifest.json`: versão, escala, nós obrigatórios, SHA-256 e
+- `Kidney_Game_v003.fbx`: cópia byte a byte do FBX exportado pelo Maya.
+- `Kidney_Game_v003_manifest.json`: versão, escala, nós obrigatórios, SHA-256 e
   validação geométrica.
+- `Kidney_Game_v002.fbx`: fallback histórico, mantido byte a byte.
 
 Fonte editável correspondente:
 
-`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Maya_v01\Source\Kidney_Master.ma`
+`C:\Users\pedro\OneDrive\Área de Trabalho\Navegacao_Renal_3D_Maya_v01\Candidates\Kidney_Game_v003\Source\Kidney_Master_v003.ma`
 
-No futuro importador Unity, o FBX deverá ser convertido de centímetros para
-metros e colocado sob um `GameplayScaleRoot` com escala visual 5×.
+O Unity converte o FBX de centímetros para metros e o coloca sob um
+`GameplayScaleRoot` com escala visual 5×.

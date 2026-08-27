@@ -32,6 +32,8 @@ TIP_RADIUS_MM = 2.0
 STONE_DIAMETER_MM = 6.0
 GAMEPLAY_SCALE = 5.0
 GRID_SPACING_MM = 0.9
+START_ANCHOR_MM = (-43.0, -88.0, -3.0)
+EXTRA_REQUIRED_NODES = []
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,7 @@ MATERIALS = {
     "collision": Material("MAT_CollisionDebug", (0.06, 0.64, 0.86), 0.18),
     "route": Material("MAT_RouteCyan", (0.00, 0.78, 1.00), 1.0),
     "stone": Material("MAT_StoneGold", (0.92, 0.56, 0.08), 1.0),
+    "junction": Material("MAT_UreterJunction", (0.82, 0.12, 0.20), 1.0),
 }
 
 
@@ -378,6 +381,10 @@ def export_obj_set(obj_dir, meshes):
         ("RouteGuide", meshes["RouteGuide"], MATERIALS["route"], False),
         ("Stone", meshes["Stone"], MATERIALS["stone"], False),
     ]
+    if "UreterJunctionVisual" in meshes:
+        entries.append(("UreterJunctionVisual", meshes["UreterJunctionVisual"], MATERIALS["junction"], False))
+    if "JunctionInterfaceMarker" in meshes:
+        entries.append(("JunctionInterfaceMarker", meshes["JunctionInterfaceMarker"], MATERIALS["route"], False))
     write_obj(obj_dir / f"{MODEL_NAME}.obj", entries)
     for entry in entries:
         write_obj(obj_dir / f"{entry[0]}.obj", [entry])
@@ -475,6 +482,8 @@ def render_previews(preview_dir, meshes):
     plotter.set_background("#10131a")
     plotter.add_mesh(meshes["KidneyExterior"], color="#c83950", opacity=0.24, smooth_shading=True, lighting=False)
     plotter.add_mesh(meshes["CollectingSystemVisual"], color="#ed5b70", opacity=0.94, smooth_shading=True, lighting=False)
+    if "UreterJunctionVisual" in meshes:
+        plotter.add_mesh(meshes["UreterJunctionVisual"], color="#d83d52", smooth_shading=True, lighting=True)
     plotter.add_mesh(meshes["RouteGuide"], color="#00d9ff", smooth_shading=True, lighting=False)
     plotter.add_mesh(meshes["Stone"], color="#f0a324", smooth_shading=True, lighting=False)
     add_orientation_widget(plotter)
@@ -602,6 +611,16 @@ def run_maya_export(mayapy, maya_script, obj_dir, source_ma, fbx_path):
 
 
 def write_manifest(path, fbx_path, validation):
+    required_nodes = [
+        "KidneyExterior",
+        "CollectingSystemVisual",
+        "CollectingSystemCollision_Inward",
+        "RouteGuide",
+        "Stone",
+        "StartAnchor",
+        "TargetAnchor",
+        "MinimapAnchor",
+    ] + list(EXTRA_REQUIRED_NODES)
     manifest = {
         "project": "Navegacao Renal 3D",
         "model": MODEL_NAME,
@@ -616,18 +635,9 @@ def write_manifest(path, fbx_path, validation):
         "gameplay_visual_scale": GAMEPLAY_SCALE,
         "tip_radius_mm": TIP_RADIUS_MM,
         "stone_nominal_diameter_mm": STONE_DIAMETER_MM,
-        "start_anchor_mm": [-43.0, -88.0, -3.0],
+        "start_anchor_mm": list(START_ANCHOR_MM),
         "target_anchor_mm": [20.5, 9.0, 5.2],
-        "required_nodes": [
-            "KidneyExterior",
-            "CollectingSystemVisual",
-            "CollectingSystemCollision_Inward",
-            "RouteGuide",
-            "Stone",
-            "StartAnchor",
-            "TargetAnchor",
-            "MinimapAnchor",
-        ],
+        "required_nodes": required_nodes,
         "fbx_file": fbx_path.name,
         "fbx_sha256": sha256(fbx_path),
         "validation": validation,
@@ -667,7 +677,7 @@ def main():
     render_previews(preview_dir, meshes)
     write_documentation(maya_root, validation)
 
-    source_ma = source_dir / "Kidney_Master.ma"
+    source_ma = source_dir / ("Kidney_Master.ma" if VERSION == "v002" else f"Kidney_Master_{VERSION}.ma")
     fbx_path = exports_dir / f"{MODEL_NAME}.fbx"
     maya_script = Path(__file__).with_name("maya_export_kidney_game_model.py")
 
@@ -683,7 +693,7 @@ def main():
                 shutil.copy2(source_file, temp_obj / source_file.name)
         temp_script = temp_root / "maya_export.py"
         shutil.copy2(maya_script, temp_script)
-        temp_ma = temp_root / "Kidney_Master.ma"
+        temp_ma = temp_root / source_ma.name
         temp_fbx = temp_root / f"{MODEL_NAME}.fbx"
         run_maya_export(args.mayapy, temp_script, temp_obj, temp_ma, temp_fbx)
         shutil.copy2(temp_ma, source_ma)

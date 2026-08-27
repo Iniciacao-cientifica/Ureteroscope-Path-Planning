@@ -1,0 +1,133 @@
+{
+  "passed": true,
+  "checks": {
+    "all_meshes_closed_and_manifold": true,
+    "route_fully_inside_collecting_system": true,
+    "route_minimum_centerline_clearance_mm": 3.818,
+    "required_clearance_mm": 2.5,
+    "route_clearance_pass": true,
+    "stone_center_inside_target_calyx": true,
+    "source_is_real_scale": true,
+    "junction_visual_closed_and_manifold": true,
+    "junction_overlap_mm": 2.0,
+    "junction_overlap_pass": true,
+    "meshy_source_pinned": true
+  },
+  "meshes": {
+    "KidneyExterior": {
+      "vertices": 56312,
+      "triangles": 112620,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        -35.176,
+        57.801,
+        -76.205,
+        74.41,
+        -27.91,
+        28.185
+      ]
+    },
+    "CollectingSystemVisual": {
+      "vertices": 23532,
+      "triangles": 47100,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        -47.64,
+        32.341,
+        -59.906,
+        49.98,
+        -18.621,
+        20.542
+      ]
+    },
+    "CollectingSystemCollision_Inward": {
+      "vertices": 12934,
+      "triangles": 25904,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        -47.64,
+        32.341,
+        -59.906,
+        49.98,
+        -18.621,
+        20.542
+      ]
+    },
+    "RouteGuide": {
+      "vertices": 4320,
+      "triangles": 8636,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        -40.134,
+        20.798,
+        -10.917,
+        9.838,
+        -10.392,
+        6.007
+      ]
+    },
+    "Stone": {
+      "vertices": 2562,
+      "triangles": 5120,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        17.43,
+        23.938,
+        5.454,
+        12.403,
+        1.825,
+        8.416
+      ]
+    },
+    "UreterJunctionVisual": {
+      "vertices": 578,
+      "triangles": 1152,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        -46.007,
+        -30.09,
+        -15.712,
+        -2.301,
+        -15.981,
+        -0.447
+      ]
+    },
+    "JunctionInterfaceMarker": {
+      "vertices": 74,
+      "triangles": 144,
+      "open_or_nonmanifold_edge_cells": 0,
+      "bounds_mm": [
+        -41.996,
+        -41.704,
+        -11.096,
+        -10.804,
+        -11.4,
+        -11.1
+      ]
+    }
+  },
+  "junction_profile": {
+    "endpoint_mm": [
+      -43.35,
+      -11.5,
+      -12.25
+    ],
+    "interface_center_mm": [
+      -41.85,
+      -10.95,
+      -11.25
+    ],
+    "tangent_to_kidney": [
+      0.789,
+      0.2786,
+      0.5267
+    ],
+    "lumen_radius_mm": 4.3,
+    "collar_radius_mm": [
+      4.4,
+      6.2
+    ],
+    "overlap_mm": 2.0,
+    "meshy_visual_sha256": "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2"
+  }
+}

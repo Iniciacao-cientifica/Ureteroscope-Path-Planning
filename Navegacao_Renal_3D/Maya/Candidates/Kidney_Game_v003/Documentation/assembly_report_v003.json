@@ -1,0 +1,18 @@
+{
+  "assembly": "C:\\Users\\pedro\\AppData\\Local\\Temp\\nr3_assembly_v003\\Urinary_System_Assembly_v003.ma",
+  "units": "centimetres",
+  "kidney_version": "v003",
+  "meshy_version": "v002",
+  "interface_center_cm": [
+    -4.184999942779541,
+    -1.0950000286102295,
+    -1.125
+  ],
+  "meshy_translation_cm": [
+    0.952834827559335,
+    -38.2697000844138,
+    -1.0344562216154631
+  ],
+  "interface_distance_mm": 2.010699415441723e-14,
+  "unity_visual_scale": 5.0
+}

@@ -1,0 +1,24 @@
+{
+  "endpoint_mm": [
+    -43.35,
+    -11.5,
+    -12.25
+  ],
+  "interface_center_mm": [
+    -41.85,
+    -10.95,
+    -11.25
+  ],
+  "tangent_to_kidney": [
+    0.789,
+    0.2786,
+    0.5267
+  ],
+  "lumen_radius_mm": 4.3,
+  "collar_radius_mm": [
+    4.4,
+    6.2
+  ],
+  "overlap_mm": 2.0,
+  "meshy_visual_sha256": "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2"
+}

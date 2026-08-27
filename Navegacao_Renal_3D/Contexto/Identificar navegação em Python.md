@@ -504,6 +504,24 @@ Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
 - SHA-256 do visual Meshy sincronizado Maya/Unity:
   `f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2`.
 
+### Marco 3.2 — junção rim/ureter v003
+
+Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
+
+- o deslocamento provisório de `0,075 m` do rim ativo foi removido;
+- o rim voltou à posição original `(-0,44; 0,34; 0)` no mundo Unity;
+- a v003 reconstrói apenas a transição proximal entre pelve e ureter Meshy;
+- o ureter Meshy completo permanece visual e sem collider;
+- rota, collider, StartAnchor e gola visual seguem o mesmo novo centro;
+- a medição fixa entre a interface v003 e o topo do ureter é `0,000041 m`;
+- a cena Maya completa é
+  `Candidates/Kidney_Game_v003/Source/Urinary_System_Assembly_v003.ma`;
+- a v002 permaneceu byte a byte inalterada;
+- SHA-256 da v003:
+  `f721e63ad9188f007520709f24cb7c60e85ce3a2588bec6b533e7460fddc9bcf`;
+- relatório `marco32_validation.json` e quatro capturas foram registrados;
+- o Marco 4 continua não iniciado.
+
 ### Marco 4 — gameplay
 
 Estados da partida, cinco colisões, flash vermelho, rota, captura, vitória,

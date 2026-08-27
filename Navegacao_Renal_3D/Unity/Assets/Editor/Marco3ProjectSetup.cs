@@ -12,8 +12,10 @@ namespace NavegacaoRenal.Editor
     public static class Marco3ProjectSetup
     {
         private const string GameScenePath = "Assets/Scenes/KidneyGame.unity";
-        private const string ModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v002.fbx";
-        private const string ExpectedModelHash = "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c";
+        private const string ModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v003.fbx";
+        private const string ExpectedModelHash = "f721e63ad9188f007520709f24cb7c60e85ce3a2588bec6b533e7460fddc9bcf";
+        private const string LegacyModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v002.fbx";
+        private const string ExpectedLegacyModelHash = "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c";
         private const string MeshyVisualModelPath = "Assets/Art/UrinarySystem/Models/Meshy_Urinary_Visual_v002.fbx";
         private const string ExpectedMeshyVisualHash = "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2";
         private const string MeshyBaseColorPath = "Assets/Art/UrinarySystem/Textures/T_MeshyUrinary_BaseColor_v002.png";
@@ -25,20 +27,20 @@ namespace NavegacaoRenal.Editor
         private const string MucosaBaseColorPath = "Assets/Art/Textures/Organic/T_RenalMucosa_BaseColor_v001.png";
         private const string MucosaNormalPath = "Assets/Art/Textures/Organic/T_RenalMucosa_NormalSource_v001.png";
 
-        [MenuItem("Navegacao Renal/Construir Marco 3.1")]
+        [MenuItem("Navegacao Renal/Construir Marco 3.2")]
         public static void Configure()
         {
-            Debug.Log("[Marco3.1] Integrando visual Meshy e preservando o controlador SphereCast.");
+            Debug.Log("[Marco3.2] Integrando a juncao v003 e preservando o controlador SphereCast.");
             Marco2ProjectSetup.Configure();
             Physics.queriesHitBackfaces = true;
             AssetDatabase.SaveAssets();
-            Validate();
             CapturePreviews();
+            Validate();
             AssetDatabase.Refresh();
-            Debug.Log("[Marco3.1] Configuracao, validacao e previews concluidos.");
+            Debug.Log("[Marco3.2] Configuracao, validacao e previews concluidos.");
         }
 
-        [MenuItem("Navegacao Renal/Validar Marco 3.1")]
+        [MenuItem("Navegacao Renal/Validar Marco 3.2")]
         public static void Validate()
         {
             List<string> checks = new List<string>();
@@ -56,6 +58,9 @@ namespace NavegacaoRenal.Editor
             Transform collisionNode = FindSceneTransform(scene, "CollectingSystemCollision_Inward");
             Transform activeExterior = FindSceneTransformUnder(scene, "KidneyLevel_Active", "KidneyExterior");
             Transform collectingVisual = FindSceneTransformUnder(scene, "KidneyLevel_Active", "CollectingSystemVisual");
+            Transform junctionVisual = FindSceneTransformUnder(scene, "KidneyLevel_Active", "UreterJunctionVisual");
+            Transform junctionMarker = FindSceneTransformUnder(scene, "KidneyLevel_Active", "JunctionInterfaceMarker");
+            Transform activeKidney = FindSceneTransform(scene, "KidneyLevel_Active");
             Transform meshyRoot = FindSceneTransform(scene, "MeshyUrinaryVisualRoot");
             Transform meshyRightKidney = FindSceneTransformUnder(scene, "MeshyUrinaryVisualRoot", "Meshy_RightKidney");
             Transform meshyLowerSystem = FindSceneTransformUnder(scene, "MeshyUrinaryVisualRoot", "Meshy_UretersAndBladder");
@@ -71,6 +76,7 @@ namespace NavegacaoRenal.Editor
             Check(FindAllComponents<CharacterController>(scene).Length == 0, "CharacterController removido", checks, errors);
             Check(CountMissingScripts(scene) == 0, "nenhum script ausente na cena", checks, errors);
             ValidateVisualRevision(scene, activeExterior, collectingVisual, meshyRoot, meshyRightKidney, meshyLowerSystem, checks, errors);
+            ValidateJunctionRevision(activeKidney, junctionVisual, junctionMarker, meshyLowerSystem, checks, errors);
 
             if (controller != null)
             {
@@ -110,6 +116,9 @@ namespace NavegacaoRenal.Editor
 
             string modelHash = File.Exists(ToAbsolute(ModelPath)) ? Sha256(ToAbsolute(ModelPath)) : string.Empty;
             Check(string.Equals(modelHash, ExpectedModelHash, StringComparison.OrdinalIgnoreCase),
+                "FBX v003 corresponde a geometria validada", checks, errors);
+            string legacyHash = File.Exists(ToAbsolute(LegacyModelPath)) ? Sha256(ToAbsolute(LegacyModelPath)) : string.Empty;
+            Check(string.Equals(legacyHash, ExpectedLegacyModelHash, StringComparison.OrdinalIgnoreCase),
                 "FBX v002 permaneceu inalterado", checks, errors);
             string meshyHash = File.Exists(ToAbsolute(MeshyVisualModelPath)) ? Sha256(ToAbsolute(MeshyVisualModelPath)) : string.Empty;
             Check(string.Equals(meshyHash, ExpectedMeshyVisualHash, StringComparison.OrdinalIgnoreCase),
@@ -117,7 +126,7 @@ namespace NavegacaoRenal.Editor
 
             ValidationReport report = new ValidationReport
             {
-                milestone = "Marco 3.1",
+                milestone = "Marco 3.2",
                 unityVersion = Application.unityVersion,
                 generatedUtc = DateTime.UtcNow.ToString("O"),
                 passed = errors.Count == 0,
@@ -128,13 +137,13 @@ namespace NavegacaoRenal.Editor
                 errors = errors.ToArray()
             };
 
-            string reportPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/marco31_validation.json"));
+            string reportPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/marco32_validation.json"));
             Directory.CreateDirectory(Path.GetDirectoryName(reportPath));
             File.WriteAllText(reportPath, JsonUtility.ToJson(report, true));
-            Debug.Log($"[Marco3.1] Relatorio: {reportPath}\n{JsonUtility.ToJson(report, true)}");
+            Debug.Log($"[Marco3.2] Relatorio: {reportPath}\n{JsonUtility.ToJson(report, true)}");
 
             if (errors.Count > 0)
-                throw new InvalidOperationException("Marco 3.1 falhou: " + string.Join(" | ", errors));
+                throw new InvalidOperationException("Marco 3.2 falhou: " + string.Join(" | ", errors));
         }
 
         private static void ValidateFrameRateEquivalence(List<string> checks, List<string> errors)
@@ -275,6 +284,55 @@ namespace NavegacaoRenal.Editor
             {
                 if (temporary != null) UnityEngine.Object.DestroyImmediate(temporary);
             }
+        }
+
+        private static void ValidateJunctionRevision(
+            Transform activeKidney,
+            Transform junctionVisual,
+            Transform junctionMarker,
+            Transform meshyLowerSystem,
+            List<string> checks,
+            List<string> errors)
+        {
+            int exteriorLayer = LayerMask.NameToLayer("KidneyExterior");
+            Renderer junctionRenderer = junctionVisual != null ? junctionVisual.GetComponent<Renderer>() : null;
+            Material meshyMaterial = AssetDatabase.LoadAssetAtPath<Material>(MeshyMaterialPath);
+
+            Check(junctionVisual != null, "gola organica UreterJunctionVisual presente na v003", checks, errors);
+            Check(junctionVisual != null && junctionVisual.gameObject.layer == exteriorLayer,
+                "gola v003 usa a camada KidneyExterior", checks, errors);
+            Check(junctionVisual != null && junctionVisual.GetComponentsInChildren<Collider>(true).Length == 0,
+                "gola visual nao altera a colisao navegavel", checks, errors);
+            Check(junctionRenderer != null && junctionRenderer.sharedMaterial == meshyMaterial,
+                "gola compartilha o acabamento PBR do sistema Meshy", checks, errors);
+            Vector3 leftUreterTop = FindLeftUreterTopCenterWorld(meshyLowerSystem);
+            Renderer markerRenderer = junctionMarker != null ? junctionMarker.GetComponent<Renderer>() : null;
+            MeshFilter markerFilter = junctionMarker != null ? junctionMarker.GetComponent<MeshFilter>() : null;
+            Vector3 interfaceCenter = junctionVisual != null && markerFilter != null && markerFilter.sharedMesh != null
+                ? junctionVisual.TransformPoint(markerFilter.sharedMesh.bounds.center)
+                : Vector3.zero;
+            float interfaceDistance = markerRenderer != null && markerFilter != null
+                ? Vector3.Distance(interfaceCenter, leftUreterTop)
+                : float.PositiveInfinity;
+            Check(markerRenderer != null && !markerRenderer.enabled && interfaceDistance <= 0.015f,
+                $"centro da gola v003 coincide com o topo do ureter Meshy (distancia {interfaceDistance:F6} m)",
+                checks, errors);
+            Check(activeKidney != null && Vector3.Distance(activeKidney.position, new Vector3(-0.44f, 0.34f, 0f)) < 0.0001f,
+                "rim ativo voltou a posicao equilibrada sem deslocamento manual", checks, errors);
+        }
+
+        private static Vector3 FindLeftUreterTopCenterWorld(Transform lowerSystem)
+        {
+            if (lowerSystem == null) return Vector3.zero;
+            Vector3[] vertices = lowerSystem.GetComponentsInChildren<MeshFilter>(true)
+                .Where(filter => filter.sharedMesh != null)
+                .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex => filter.transform.TransformPoint(vertex)))
+                .Where(vertex => vertex.x < 0f)
+                .ToArray();
+            if (vertices.Length == 0) return Vector3.zero;
+            float topY = vertices.Max(vertex => vertex.y);
+            Vector3[] topBand = vertices.Where(vertex => vertex.y >= topY - 0.015f).ToArray();
+            return topBand.Aggregate(Vector3.zero, (sum, vertex) => sum + vertex) / topBand.Length;
         }
 
         private static int MeshVertexCount(Transform transform)
@@ -430,11 +488,26 @@ namespace NavegacaoRenal.Editor
             string directory = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/Previews"));
             Directory.CreateDirectory(directory);
 
-            CaptureCamera(explorationCamera, Path.Combine(directory, "marco31_visual_system.png"));
+            CaptureCamera(explorationCamera, Path.Combine(directory, "marco32_visual_system.png"));
+            Transform junction = FindSceneTransformUnder(scene, "KidneyLevel_Active", "UreterJunctionVisual");
+            Renderer junctionRenderer = junction != null ? junction.GetComponent<Renderer>() : null;
+            if (explorationCamera != null && junctionRenderer != null)
+            {
+                Vector3 savedPosition = explorationCamera.transform.position;
+                Quaternion savedRotation = explorationCamera.transform.rotation;
+                float savedFov = explorationCamera.fieldOfView;
+                Vector3 focus = junctionRenderer.bounds.center;
+                explorationCamera.transform.position = focus + new Vector3(0f, 0.015f, -0.52f);
+                explorationCamera.transform.LookAt(focus);
+                explorationCamera.fieldOfView = 34f;
+                CaptureCamera(explorationCamera, Path.Combine(directory, "marco32_left_junction_closeup.png"));
+                explorationCamera.transform.SetPositionAndRotation(savedPosition, savedRotation);
+                explorationCamera.fieldOfView = savedFov;
+            }
             if (route != null) route.SetActive(false);
-            CaptureCamera(camera, Path.Combine(directory, "marco31_realistic_route_off.png"));
+            CaptureCamera(camera, Path.Combine(directory, "marco32_realistic_route_off.png"));
             if (route != null) route.SetActive(true);
-            CaptureCamera(camera, Path.Combine(directory, "marco31_realistic_route_on.png"));
+            CaptureCamera(camera, Path.Combine(directory, "marco32_realistic_route_on.png"));
             if (route != null) route.SetActive(false);
         }
 
@@ -454,7 +527,7 @@ namespace NavegacaoRenal.Editor
                 image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
                 image.Apply();
                 File.WriteAllBytes(outputPath, image.EncodeToPNG());
-                Debug.Log("[Marco3.1] Preview criado: " + outputPath);
+                Debug.Log("[Marco3.2] Preview criado: " + outputPath);
             }
             finally
             {

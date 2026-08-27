@@ -22,6 +22,10 @@ OBJECT_FILES = {
     "RouteGuide": "RouteGuide.obj",
     "Stone": "Stone.obj",
 }
+OPTIONAL_OBJECT_FILES = {
+    "UreterJunctionVisual": "UreterJunctionVisual.obj",
+    "JunctionInterfaceMarker": "JunctionInterfaceMarker.obj",
+}
 
 
 def load_plugin(name, candidates):
@@ -125,9 +129,17 @@ def main():
     objects = {}
     for name, filename in OBJECT_FILES.items():
         objects[name] = import_single_obj(args.obj_dir / filename, name)
+    for name, filename in OPTIONAL_OBJECT_FILES.items():
+        path = args.obj_dir / filename
+        if path.is_file():
+            objects[name] = import_single_obj(path, name)
 
     cmds.parent(objects["KidneyExterior"], visual_group)
     cmds.parent(objects["CollectingSystemVisual"], visual_group)
+    if "UreterJunctionVisual" in objects:
+        cmds.parent(objects["UreterJunctionVisual"], visual_group)
+    if "JunctionInterfaceMarker" in objects:
+        cmds.parent(objects["JunctionInterfaceMarker"], gameplay_group)
     cmds.parent(objects["CollectingSystemCollision_Inward"], gameplay_group)
     cmds.parent(objects["RouteGuide"], gameplay_group)
     cmds.parent(objects["Stone"], gameplay_group)
@@ -139,12 +151,19 @@ def main():
         "RouteGuide": create_standard_material("MAT_RouteCyan", (0.0, 0.78, 1.0), emission=(0.0, 0.55, 0.8)),
         "Stone": create_standard_material("MAT_StoneGold", (0.92, 0.56, 0.08)),
     }
+    if "UreterJunctionVisual" in objects:
+        materials["UreterJunctionVisual"] = create_standard_material("MAT_UreterJunction", (0.82, 0.12, 0.20))
+    if "JunctionInterfaceMarker" in objects:
+        materials["JunctionInterfaceMarker"] = create_standard_material("MAT_InterfaceMarker", (0.05, 0.85, 1.0))
     for name, shading_group in materials.items():
         cmds.sets(objects[name], edit=True, forceElement=shading_group)
 
     # Basic editable UVs for Maya inspection and later material work. These do
     # not affect the authoritative object transforms or physical dimensions.
-    for name in ("KidneyExterior", "CollectingSystemVisual", "Stone"):
+    uv_objects = ["KidneyExterior", "CollectingSystemVisual", "Stone"]
+    if "UreterJunctionVisual" in objects:
+        uv_objects.append("UreterJunctionVisual")
+    for name in uv_objects:
         try:
             cmds.polyAutoProjection(
                 objects[name],
@@ -157,7 +176,13 @@ def main():
         except RuntimeError:
             pass
 
-    start = create_locator("StartAnchor", (-4.3, -8.8, -0.3), (-4.2, -7.2, -0.3), 0.6)
+    if args.version == "v003":
+        start_position = (-3.96, -1.01, -0.97)
+        start_target = (-3.40, -0.83, -0.55)
+    else:
+        start_position = (-4.3, -8.8, -0.3)
+        start_target = (-4.2, -7.2, -0.3)
+    start = create_locator("StartAnchor", start_position, start_target, 0.6)
     target = create_locator("TargetAnchor", (2.05, 0.9, 0.52), (1.4, 0.78, 0.3), 0.5)
     minimap = create_locator("MinimapAnchor", (15.5, -14.0, 11.0), (0.0, -0.4, 0.0), 0.7)
     cmds.parent(start, target, minimap, anchor_group)

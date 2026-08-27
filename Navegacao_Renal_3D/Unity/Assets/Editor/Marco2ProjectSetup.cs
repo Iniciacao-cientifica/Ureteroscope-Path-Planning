@@ -14,8 +14,9 @@ namespace NavegacaoRenal.Editor
 {
     public static class Marco2ProjectSetup
     {
-        private const string ModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v002.fbx";
-        private const string ManifestPath = "Assets/Art/Kidney/Models/Kidney_Game_v002_manifest.json";
+        private const string ModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v003.fbx";
+        private const string ManifestPath = "Assets/Art/Kidney/Models/Kidney_Game_v003_manifest.json";
+        private const string LegacyModelPath = "Assets/Art/Kidney/Models/Kidney_Game_v002.fbx";
         private const string PrefabPath = "Assets/Prefabs/Kidney/KidneyLevel.prefab";
         private const string GameScenePath = "Assets/Scenes/KidneyGame.unity";
         private const string MenuScenePath = "Assets/Scenes/MainMenu.unity";
@@ -34,7 +35,8 @@ namespace NavegacaoRenal.Editor
         private static readonly string[] RequiredNodes =
         {
             "KidneyExterior", "CollectingSystemVisual", "CollectingSystemCollision_Inward",
-            "RouteGuide", "Stone", "StartAnchor", "TargetAnchor", "MinimapAnchor"
+            "RouteGuide", "Stone", "StartAnchor", "TargetAnchor", "MinimapAnchor",
+            "UreterJunctionVisual", "JunctionInterfaceMarker"
         };
 
         [MenuItem("Navegacao Renal/Construir Marco 2")]
@@ -75,7 +77,7 @@ namespace NavegacaoRenal.Editor
             ConfigureOrganicMaterial(ureter, null, mucosaNormal, new Vector2(2f, 8f), 0.16f, 0.82f, false);
             ConfigureOrganicMaterial(bladder, null, mucosaNormal, new Vector2(3f, 3f), 0.22f, 0.78f, false);
 
-            CreateKidneyPrefab(exterior, interior, route, stone);
+            CreateKidneyPrefab(exterior, interior, route, stone, meshyUrinary);
             CreateGameScene(meshyUrinary, probe);
             CreateMenuScene();
             ConfigureBuildSettings();
@@ -92,8 +94,9 @@ namespace NavegacaoRenal.Editor
             List<string> checks = new List<string>();
             List<string> errors = new List<string>();
 
-            Check(File.Exists(ToAbsolute(ModelPath)), "FBX v002 presente", checks, errors);
-            Check(File.Exists(ToAbsolute(ManifestPath)), "manifesto v002 presente", checks, errors);
+            Check(File.Exists(ToAbsolute(ModelPath)), "FBX v003 presente", checks, errors);
+            Check(File.Exists(ToAbsolute(ManifestPath)), "manifesto v003 presente", checks, errors);
+            Check(File.Exists(ToAbsolute(LegacyModelPath)), "FBX v002 preservado", checks, errors);
             Check(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath) != null, "prefab KidneyLevel criado", checks, errors);
             Check(File.Exists(ToAbsolute(GameScenePath)), "cena KidneyGame criada", checks, errors);
             Check(File.Exists(ToAbsolute(MenuScenePath)), "cena MainMenu criada", checks, errors);
@@ -127,9 +130,12 @@ namespace NavegacaoRenal.Editor
                 Check(collision != null && collision.GetComponent<MeshCollider>() != null, "MeshCollider interno criado", checks, errors);
             }
 
-            string expectedHash = "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c";
+            string expectedHash = "f721e63ad9188f007520709f24cb7c60e85ce3a2588bec6b533e7460fddc9bcf";
             string actualHash = File.Exists(ToAbsolute(ModelPath)) ? Sha256(ToAbsolute(ModelPath)) : string.Empty;
-            Check(string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase), "SHA-256 do FBX v002", checks, errors);
+            Check(string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase), "SHA-256 do FBX v003", checks, errors);
+            string legacyHash = File.Exists(ToAbsolute(LegacyModelPath)) ? Sha256(ToAbsolute(LegacyModelPath)) : string.Empty;
+            Check(string.Equals(legacyHash, "174fabbf6ec31b3052360be995b5bbc4fb7e074b91ef2a2bba838ca45cc0fa9c", StringComparison.OrdinalIgnoreCase),
+                "SHA-256 do FBX v002 preservado", checks, errors);
             string expectedMeshyHash = "f8408f41656011f65cb737b1b434e7611228036b76fb8fcadfaa183dcfa26ed2";
             string actualMeshyHash = File.Exists(ToAbsolute(MeshyVisualModelPath)) ? Sha256(ToAbsolute(MeshyVisualModelPath)) : string.Empty;
             Check(string.Equals(actualMeshyHash, expectedMeshyHash, StringComparison.OrdinalIgnoreCase), "SHA-256 do visual Meshy v002", checks, errors);
@@ -211,7 +217,7 @@ namespace NavegacaoRenal.Editor
         {
             AssetDatabase.ImportAsset(ModelPath, ImportAssetOptions.ForceUpdate);
             ModelImporter importer = AssetImporter.GetAtPath(ModelPath) as ModelImporter;
-            if (importer == null) throw new InvalidOperationException("O FBX v002 nao foi reconhecido pelo Unity.");
+            if (importer == null) throw new InvalidOperationException("O FBX v003 nao foi reconhecido pelo Unity.");
             importer.globalScale = 1f;
             importer.useFileScale = true;
             importer.importAnimation = false;
@@ -391,10 +397,15 @@ namespace NavegacaoRenal.Editor
             EditorUtility.SetDirty(material);
         }
 
-        private static void CreateKidneyPrefab(Material exteriorMaterial, Material interiorMaterial, Material routeMaterial, Material stoneMaterial)
+        private static void CreateKidneyPrefab(
+            Material exteriorMaterial,
+            Material interiorMaterial,
+            Material routeMaterial,
+            Material stoneMaterial,
+            Material junctionMaterial)
         {
             GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
-            if (source == null) throw new InvalidOperationException("FBX v002 nao carregado.");
+            if (source == null) throw new InvalidOperationException("FBX v003 nao carregado.");
 
             GameObject root = new GameObject("KidneyLevel");
             GameObject physical = new GameObject("PhysicalScaleRoot");
@@ -406,13 +417,21 @@ namespace NavegacaoRenal.Editor
             GameObject model = PrefabUtility.InstantiatePrefab(source) as GameObject;
             if (model == null) throw new InvalidOperationException("Nao foi possivel instanciar o FBX.");
             PrefabUtility.UnpackPrefabInstance(model, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-            model.name = "KidneyModel_v002";
+            model.name = "KidneyModel_v003";
             model.transform.SetParent(gameplay.transform, false);
 
             SetNodeMaterialAndLayer(model.transform, "KidneyExterior", exteriorMaterial, "KidneyExterior");
             SetNodeMaterialAndLayer(model.transform, "CollectingSystemVisual", interiorMaterial, "KidneyInteriorVisual");
             SetNodeMaterialAndLayer(model.transform, "RouteGuide", routeMaterial, "Route");
             SetNodeMaterialAndLayer(model.transform, "Stone", stoneMaterial, "Stone");
+            SetNodeMaterialAndLayer(model.transform, "UreterJunctionVisual", junctionMaterial, "KidneyExterior");
+            Transform interfaceMarker = FindDeep(model.transform, "JunctionInterfaceMarker");
+            if (interfaceMarker != null)
+            {
+                SetLayerRecursively(interfaceMarker.gameObject, LayerMask.NameToLayer("KidneyExterior"));
+                Renderer interfaceRenderer = interfaceMarker.GetComponent<Renderer>();
+                if (interfaceRenderer != null) interfaceRenderer.enabled = false;
+            }
 
             Transform collisionNode = FindDeep(model.transform, "CollectingSystemCollision_Inward");
             if (collisionNode == null) throw new InvalidOperationException("No de colisao interna ausente.");
@@ -447,11 +466,9 @@ namespace NavegacaoRenal.Editor
             active.transform.rotation = Quaternion.Euler(2f, -12f, -5f);
 
             CreateMeshyUrinaryVisual(systems.transform, meshyUrinaryMaterial, active.transform);
-            // O alinhamento principal usa o rim direito Meshy como referencia.
-            // Depois dele, aproxima somente o rim ativo esquerdo 7,5 cm no
-            // mundo visual para unir sua saida ao ureter sem deslocar o resto
-            // do sistema urinario.
-            active.transform.position += new Vector3(0.075f, 0f, 0f);
+            // A v003 reconstruiu a saida proximal e a gola de transicao.
+            // O rim permanece na posicao equilibrada original; nao ha mais
+            // deslocamento manual para esconder a fresta.
             CreateLighting();
 
             GameObject managerObject = new GameObject("KidneyGameManager");
