@@ -15,6 +15,26 @@ namespace NavegacaoRenal
             bool minimapPressed,
             bool cursorLockPressed,
             bool cursorReleasePressed)
+            : this(steeringDelta, advance, roll, captureHeld, pausePressed, resetPressed,
+                routePressed, minimapPressed, cursorLockPressed, cursorReleasePressed,
+                EndoscopeSteeringMode.MouseDelta, Quaternion.identity, false)
+        {
+        }
+
+        public EndoscopeInputFrame(
+            Vector2 steeringDelta,
+            float advance,
+            float roll,
+            bool captureHeld,
+            bool pausePressed,
+            bool resetPressed,
+            bool routePressed,
+            bool minimapPressed,
+            bool cursorLockPressed,
+            bool cursorReleasePressed,
+            EndoscopeSteeringMode steeringMode,
+            Quaternion relativeOrientation,
+            bool calibratePressed)
         {
             SteeringDelta = steeringDelta;
             Advance = advance;
@@ -26,6 +46,9 @@ namespace NavegacaoRenal
             MinimapPressed = minimapPressed;
             CursorLockPressed = cursorLockPressed;
             CursorReleasePressed = cursorReleasePressed;
+            SteeringMode = steeringMode;
+            RelativeOrientation = relativeOrientation;
+            CalibratePressed = calibratePressed;
         }
 
         public Vector2 SteeringDelta { get; }
@@ -38,5 +61,8 @@ namespace NavegacaoRenal
         public bool MinimapPressed { get; }
         public bool CursorLockPressed { get; }
         public bool CursorReleasePressed { get; }
+        public EndoscopeSteeringMode SteeringMode { get; }
+        public Quaternion RelativeOrientation { get; }
+        public bool CalibratePressed { get; }
     }
 }

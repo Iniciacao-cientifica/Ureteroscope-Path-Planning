@@ -167,7 +167,11 @@ namespace NavegacaoRenal
             if (contactsText != null) contactsText.text = $"Contatos  {gameManager.WallContacts}/{gameManager.MaximumWallContacts}";
             if (captureFill != null) captureFill.fillAmount = gameManager.CaptureProgress01;
             if (captureText != null)
-                captureText.text = gameManager.CaptureProgress01 > 0f ? "Fechando a garra..." : "Segure ESPAÇO para capturar";
+                captureText.text = gameManager.CaptureProgress01 > 0f
+                    ? "Fechando a garra..."
+                    : gameManager.CurrentControlMode == EndoscopeControlMode.Esp32Mpu
+                        ? "Segure o botão para capturar"
+                        : "Segure ESPAÇO para capturar";
 
             if (resultTitleText != null)
                 resultTitleText.text = state == KidneySessionState.Won ? "PEDRA CAPTURADA" : "LIMITE DE CONTATOS";

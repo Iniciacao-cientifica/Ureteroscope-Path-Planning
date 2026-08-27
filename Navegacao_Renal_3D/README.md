@@ -1,4 +1,4 @@
-# Navegação Renal 3D — Marco 5
+# Navegação Renal 3D — Marco 6
 
 Projeto Unity 6 URP de navegação ureteroscópica com um rim navegável, sistema
 urinário completo para visualização e modos Realista e Exploração.
@@ -17,11 +17,15 @@ Use Unity `6000.5.0f1` e abra `Assets/Scenes/MainMenu.unity`.
   e visibilidade independente de sistema coletor, rota e pedra;
 - minimapa final inclinado com rim ativo, rota e indicador de posição;
 - controlador interno por `SphereCast`, sem `CharacterController`;
-- entrada realista abstraída para a futura integração ESP32;
-- relatório aprovado com `133` verificações em
-  `Unity/Documentation/marco5_validation.json`.
+- entrada Realista selecionável entre mouse/teclado e ESP32 DevKit V1 com
+  MPU6050 e botão físico;
+- detecção automática/lista COM, calibração por `C` e pausa segura na
+  desconexão;
+- firmware JSON v2 compilado para `esp32dev`;
+- relatório aprovado com `173` verificações em
+  `Unity/Documentation/marco6_validation.json`.
 
-Instruções completas: `Unity/Documentation/MARCO_5.md`.
+Instruções completas: `Unity/Documentation/MARCO_6.md`.
 
 ## Maya e geometria
 
@@ -40,8 +44,8 @@ O Marco 5 não altera a geometria v003, sua cópia Maya nem o visual Meshy.
 - Marcos 1–3.2: modelo, Unity, navegação, Meshy e junção v003 concluídos;
 - Marco 4: gameplay desktop concluído;
 - Marco 5: exploração livre e minimapa final concluídos;
-- Marco 6: polimento, build Windows e integração futura com ESP32, MPU,
-  encoder, garra física e Quest.
+- Marco 6: controle ESP32/MPU, firmware e build Windows concluídos;
+- Marco 5.1: próxima revisão, reconstrução do rim ativo sobre a base Meshy.
 
 O histórico de requisitos e decisões está em
 `Contexto/Identificar navegação em Python.md`.

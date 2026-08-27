@@ -12,8 +12,9 @@ namespace NavegacaoRenal
         [SerializeField] private float contactRearmRadius = 0.015f;
         [SerializeField] private LayerMask collisionMask;
 
-        [Header("Mouse steering")]
+        [Header("Steering")]
         [SerializeField] private float mouseRateGain = 4f;
+        [SerializeField] private float mouseSensitivityMultiplier = 1f;
         [SerializeField] private float maximumSteeringSpeed = 70f;
         [SerializeField] private float steeringSmoothTime = 0.12f;
         [SerializeField] private float rollSpeed = 55f;
@@ -24,6 +25,9 @@ namespace NavegacaoRenal
         private Vector2 steeringSmoothDampVelocity;
         private bool wallContactLatched;
         private IEndoscopeInputSource inputSource;
+        private Quaternion hardwareBaseRotation = Quaternion.identity;
+
+        private const string MouseSensitivityPreference = "NavegacaoRenal.MouseSensitivity";
 
         public float ForwardSpeed => forwardSpeed;
         public float TipRadius => tipRadius;
@@ -36,6 +40,7 @@ namespace NavegacaoRenal
         public int CollisionMask => collisionMask.value;
         public bool IsWallContactLatched => wallContactLatched;
         public MonoBehaviour InputSourceBehaviour => inputSourceBehaviour;
+        public float MouseSensitivityMultiplier => mouseSensitivityMultiplier;
 
         public void Configure(KidneyGameManager manager, LayerMask kidneyCollisionMask)
         {
@@ -55,6 +60,7 @@ namespace NavegacaoRenal
                 return;
 
             transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+            hardwareBaseRotation = anchor.rotation;
             smoothedSteeringVelocity = Vector2.zero;
             steeringSmoothDampVelocity = Vector2.zero;
             wallContactLatched = false;
@@ -69,7 +75,15 @@ namespace NavegacaoRenal
         private void Awake()
         {
             Physics.queriesHitBackfaces = true;
+            mouseSensitivityMultiplier = Mathf.Clamp(PlayerPrefs.GetFloat(MouseSensitivityPreference, mouseSensitivityMultiplier), 0.5f, 2f);
+            hardwareBaseRotation = transform.rotation;
             inputSource = inputSourceBehaviour as IEndoscopeInputSource;
+        }
+
+        public void SetMouseSensitivity(float value)
+        {
+            mouseSensitivityMultiplier = Mathf.Clamp(value, 0.5f, 2f);
+            PlayerPrefs.SetFloat(MouseSensitivityPreference, mouseSensitivityMultiplier);
         }
 
         private void OnDisable()
@@ -113,10 +127,21 @@ namespace NavegacaoRenal
 
         private void ApplySteering(EndoscopeInputFrame input, float deltaTime)
         {
+            if (input.SteeringMode == EndoscopeSteeringMode.RelativeOrientation)
+            {
+                Quaternion target = hardwareBaseRotation * input.RelativeOrientation;
+                transform.rotation = AdvanceHardwareOrientation(transform.rotation, target, deltaTime,
+                    steeringSmoothTime, maximumSteeringSpeed);
+                smoothedSteeringVelocity = Vector2.zero;
+                steeringSmoothDampVelocity = Vector2.zero;
+                return;
+            }
+
             Vector2 targetAngularVelocity = Vector2.zero;
             if (Cursor.lockState == CursorLockMode.Locked)
             {
-                targetAngularVelocity = new Vector2(-input.SteeringDelta.y, input.SteeringDelta.x) * mouseRateGain;
+                targetAngularVelocity = new Vector2(-input.SteeringDelta.y, input.SteeringDelta.x) *
+                                        mouseRateGain * mouseSensitivityMultiplier;
                 targetAngularVelocity = Vector2.ClampMagnitude(targetAngularVelocity, maximumSteeringSpeed);
             }
 
@@ -135,6 +160,15 @@ namespace NavegacaoRenal
                 Space.Self);
 
             transform.Rotate(0f, 0f, input.Roll * rollSpeed * deltaTime, Space.Self);
+        }
+
+        public static Quaternion AdvanceHardwareOrientation(Quaternion current, Quaternion target,
+            float deltaTime, float smoothTime, float maximumDegreesPerSecond)
+        {
+            float blend = 1f - Mathf.Exp(-Mathf.Max(0f, deltaTime) / Mathf.Max(0.001f, smoothTime));
+            Quaternion smoothedTarget = Quaternion.Slerp(current, target, blend);
+            return Quaternion.RotateTowards(current, smoothedTarget,
+                Mathf.Max(0f, maximumDegreesPerSecond) * Mathf.Max(0f, deltaTime));
         }
 
         public bool TryMoveDistance(float signedDistance)

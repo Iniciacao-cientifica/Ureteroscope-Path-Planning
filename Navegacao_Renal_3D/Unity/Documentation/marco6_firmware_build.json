@@ -1,0 +1,12 @@
+{
+  "environment": "esp32dev",
+  "platformioVersion": "6.1.19",
+  "status": "SUCCESS",
+  "ramUsedBytes": 21964,
+  "ramAvailableBytes": 327680,
+  "flashUsedBytes": 304477,
+  "flashAvailableBytes": 1310720,
+  "firmwareBinBytes": 304848,
+  "firmwareBinSha256": "54e8e6f8f88dd36ba59edd303a34c177754e9054a9194b73a681c2b438dc9400",
+  "hardwarePhysicallyTested": false
+}

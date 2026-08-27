@@ -31,6 +31,10 @@ namespace NavegacaoRenal
         [SerializeField] private ExplorationVisibilityController explorationVisibility;
         [SerializeField] private KidneyMinimapPresenter minimapPresenter;
 
+        [Header("Marco 6")]
+        [SerializeField] private EndoscopeInputRouter inputRouter;
+        [SerializeField] private KidneyHardwareUI hardwareUI;
+
         private IEndoscopeInputSource inputSource;
         private KidneyGameMode currentMode;
         // Playing keeps the edit-mode Marco 3 validators backwards compatible.
@@ -46,8 +50,12 @@ namespace NavegacaoRenal
         private Vector3 stoneOriginalLocalScale;
         private bool stonePoseCached;
         private bool stoneCaptured;
+        private EndoscopeControlMode currentControlMode = EndoscopeControlMode.MouseKeyboard;
+        private bool pausedForHardwareReconnect;
 
         public bool CanNavigate => currentMode == KidneyGameMode.Realistic && sessionState == KidneySessionState.Playing;
+        public bool CanBeginAttempt => currentMode == KidneyGameMode.Realistic &&
+                                       (currentControlMode != EndoscopeControlMode.Esp32Mpu || HardwareReady);
         public KidneyGameMode CurrentMode => currentMode;
         public KidneySessionState SessionState => sessionState;
         public int WallContacts => wallContacts;
@@ -73,6 +81,11 @@ namespace NavegacaoRenal
         public FreeFlyCameraController ExplorationController => explorationController;
         public ExplorationVisibilityController ExplorationVisibility => explorationVisibility;
         public KidneyMinimapPresenter MinimapPresenter => minimapPresenter;
+        public EndoscopeInputRouter InputRouter => inputRouter;
+        public KidneyHardwareUI HardwareUI => hardwareUI;
+        public EndoscopeControlMode CurrentControlMode => currentControlMode;
+        public bool HardwareReady => inputRouter != null && inputRouter.HardwareReady;
+        public bool PausedForHardwareReconnect => pausedForHardwareReconnect;
 
         public void Configure(
             GameObject realRig,
@@ -114,6 +127,14 @@ namespace NavegacaoRenal
             minimapPresenter = presenter;
         }
 
+        public void ConfigureMarco6(EndoscopeInputRouter router, KidneyHardwareUI ui)
+        {
+            inputRouter = router;
+            hardwareUI = ui;
+            inputSourceBehaviour = router;
+            inputSource = router;
+        }
+
         private void Awake()
         {
             inputSource = inputSourceBehaviour as IEndoscopeInputSource;
@@ -123,12 +144,16 @@ namespace NavegacaoRenal
         private void Start()
         {
             Application.targetFrameRate = 120;
-            KidneyGameMode launchMode = KidneyLaunchContext.Consume(initialMode);
-            ApplyMode(launchMode, true);
+            KidneyLaunchContext.Selection launch = KidneyLaunchContext.ConsumeSelection(initialMode);
+            currentControlMode = launch.Mode == KidneyGameMode.Exploration
+                ? EndoscopeControlMode.MouseKeyboard
+                : launch.ControlMode;
+            inputRouter?.SelectMode(currentControlMode);
+            ApplyMode(launch.Mode, true);
             SetRouteVisible(true);
             SetMinimapVisible(true);
 
-            if (launchMode == KidneyGameMode.Realistic)
+            if (launch.Mode == KidneyGameMode.Realistic)
                 PrepareAttempt();
             else
                 sessionState = KidneySessionState.Playing;
@@ -147,6 +172,8 @@ namespace NavegacaoRenal
 
             if (currentMode == KidneyGameMode.Exploration)
                 return;
+
+            HandleHardwareConnection();
 
             if (input.PausePressed)
             {
@@ -180,6 +207,8 @@ namespace NavegacaoRenal
             elapsedTime = 0f;
             CancelCapture();
             ResetProbePosition();
+            inputRouter?.ResetAttemptState();
+            pausedForHardwareReconnect = false;
             SetRouteVisible(true);
             SetMinimapVisible(true);
             sessionState = KidneySessionState.Ready;
@@ -189,7 +218,7 @@ namespace NavegacaoRenal
 
         public void BeginAttempt()
         {
-            if (currentMode != KidneyGameMode.Realistic)
+            if (currentMode != KidneyGameMode.Realistic || !CanBeginAttempt)
                 return;
 
             RestoreStone();
@@ -197,6 +226,8 @@ namespace NavegacaoRenal
             elapsedTime = 0f;
             CancelCapture();
             ResetProbePosition();
+            inputRouter?.ResetAttemptState();
+            pausedForHardwareReconnect = false;
             sessionState = KidneySessionState.Playing;
             gameUI?.RefreshImmediate();
         }
@@ -205,6 +236,9 @@ namespace NavegacaoRenal
         {
             if (sessionState != KidneySessionState.Paused)
                 return;
+            if (currentControlMode == EndoscopeControlMode.Esp32Mpu && !HardwareReady)
+                return;
+            pausedForHardwareReconnect = false;
             sessionState = stateBeforePause == KidneySessionState.Ready
                 ? KidneySessionState.Ready
                 : KidneySessionState.Playing;
@@ -260,6 +294,9 @@ namespace NavegacaoRenal
             }
             else if (sessionState == KidneySessionState.Paused)
             {
+                if (currentControlMode == EndoscopeControlMode.Esp32Mpu && !HardwareReady)
+                    return;
+                pausedForHardwareReconnect = false;
                 sessionState = stateBeforePause == KidneySessionState.Ready
                     ? KidneySessionState.Ready
                     : KidneySessionState.Playing;
@@ -303,6 +340,7 @@ namespace NavegacaoRenal
         public void ReturnToMenu()
         {
             MouseEndoscopeController.ReleaseCursor();
+            inputRouter?.StopHardware();
             KidneyLaunchContext.Reset();
             SceneManager.LoadScene("MainMenu");
         }
@@ -320,6 +358,31 @@ namespace NavegacaoRenal
             }
             if (resetProbe && mode == KidneyGameMode.Realistic) ResetProbePosition();
             minimapPresenter?.RefreshMarker();
+        }
+
+        private void HandleHardwareConnection()
+        {
+            if (currentControlMode != EndoscopeControlMode.Esp32Mpu) return;
+            if (!HardwareReady)
+            {
+                if (sessionState == KidneySessionState.Playing)
+                {
+                    stateBeforePause = KidneySessionState.Playing;
+                    sessionState = KidneySessionState.Paused;
+                    pausedForHardwareReconnect = true;
+                    CancelCapture();
+                    MouseEndoscopeController.ReleaseCursor();
+                    gameUI?.RefreshImmediate();
+                }
+                return;
+            }
+
+            if (pausedForHardwareReconnect && sessionState == KidneySessionState.Paused)
+            {
+                pausedForHardwareReconnect = false;
+                sessionState = KidneySessionState.Playing;
+                gameUI?.RefreshImmediate();
+            }
         }
 
         private void CompleteCapture()
@@ -385,5 +448,7 @@ namespace NavegacaoRenal
             if (!hasFocus)
                 MouseEndoscopeController.ReleaseCursor();
         }
+
+        private void OnApplicationQuit() => inputRouter?.StopHardware();
     }
 }

@@ -564,11 +564,35 @@ Estado: implementado e validado automaticamente no Unity `6000.5.0f1`.
 - hashes dos FBX v002, v003 e Meshy permanecem inalterados;
 - relatório `marco5_validation.json` e cinco capturas registrados.
 
-### Marco 6 — polimento e integração futura
+### Marco 6 — ESP32/MPU e build Windows
 
-Materiais, interface, áudio, testes, build Windows e, somente depois da versão
-desktop aprovada, planejamento/implementação de ESP32, MPU, encoder, garra e
-Quest.
+Estado: implementado e validado por simulação/replay no Unity `6000.5.0f1`.
+
+- hardware reduzido a ESP32 DevKit V1, MPU6050 e um botão;
+- GPIO 21/22 para I2C e GPIO 25 para o botão com `INPUT_PULLUP`;
+- firmware com Madgwick, calibração de dois segundos, amostragem a `100 Hz` e
+  JSON v2 a `50 Hz`/`115200 baud`;
+- menu separa Realista por mouse e Realista por MPU; Exploração permanece no
+  mouse;
+- MPU controla orientação relativa, `C` recalibra e sensibilidade é persistida;
+- botão inicia em Avanço, clique duplo alterna Avanço/Recuo e, perto da pedra,
+  passa automaticamente para captura sustentada;
+- busca automática e lista manual de portas COM;
+- serial nativa do Windows em thread de fundo, sem DLL externa;
+- perda de dados por `250 ms` pausa a tentativa e a reconexão retoma do mesmo
+  ponto;
+- `133` verificações anteriores e `40` novas passaram, totalizando `173`;
+- firmware compilado com sucesso para `esp32dev`;
+- validação elétrica real registrada como pendente porque o conjunto ainda não
+  está montado;
+- encoder, servo, sensor físico e Quest continuam fora do escopo;
+- hashes de v002, v003 e Meshy permaneceram inalterados.
+
+### Marco 5.1 — revisão anatômica futura
+
+Próxima etapa após o Marco 6: reconstruir o rim ativo a partir do rim esquerdo
+Meshy, criar um novo sistema coletor navegável v004 e aprovar primeiro a cena
+Maya e as capturas antes de substituir a geometria no Unity.
 
 ## Restrições importantes
 
@@ -585,6 +609,5 @@ Quest.
 
 ## Próxima ação
 
-Apresentar o Marco 5 para aprovação e parar. O Marco 6 deverá ser planejado
-antes de implementar polimento, build Windows, ESP32, MPU, encoder, servo,
-garra física ou Quest.
+Apresentar o Marco 6 e parar. Depois da aprovação, retomar o planejamento já
+definido do Marco 5.1; não iniciar Quest, encoder, servo ou sensor físico.
