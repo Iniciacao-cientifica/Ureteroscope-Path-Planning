@@ -65,8 +65,18 @@ namespace NavegacaoRenal
         public float CaptureProgress01 => captureProgress;
         public float ElapsedTime => elapsedTime;
         public bool IsPaused => sessionState == KidneySessionState.Paused;
-        public bool IsWithinCaptureRange => probe != null && targetStone != null &&
-                                            Vector3.Distance(probe.position, targetStone.position) <= captureDistance;
+        public bool IsWithinCaptureRange
+        {
+            get
+            {
+                if (probe == null || targetStone == null ||
+                    Vector3.Distance(probe.position, targetStone.position) > captureDistance)
+                    return false;
+
+                MouseEndoscopeController controller = probe.GetComponent<MouseEndoscopeController>();
+                return controller == null || controller.HasClearPathTo(targetStone.position);
+            }
+        }
         public bool RouteVisible => routeGuide != null && routeGuide.activeSelf;
         public bool MinimapVisible => minimapPresenter != null
             ? minimapPresenter.IsVisible

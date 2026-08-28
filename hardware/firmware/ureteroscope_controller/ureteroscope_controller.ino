@@ -107,6 +107,7 @@ void setup() {
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
   filter.begin(SAMPLE_HZ);
   calibrateGyroscope();
+  lastSendMs = millis();
 }
 
 void loop() {

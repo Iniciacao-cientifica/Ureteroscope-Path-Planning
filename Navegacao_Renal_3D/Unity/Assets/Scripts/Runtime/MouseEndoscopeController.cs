@@ -26,6 +26,8 @@ namespace NavegacaoRenal
         private bool wallContactLatched;
         private IEndoscopeInputSource inputSource;
         private Quaternion hardwareBaseRotation = Quaternion.identity;
+        private Vector3 lastSafePosition;
+        private bool hasLastSafePosition;
 
         private const string MouseSensitivityPreference = "NavegacaoRenal.MouseSensitivity";
 
@@ -64,6 +66,7 @@ namespace NavegacaoRenal
             smoothedSteeringVelocity = Vector2.zero;
             steeringSmoothDampVelocity = Vector2.zero;
             wallContactLatched = false;
+            RememberSafePosition();
         }
 
         public static void ReleaseCursor()
@@ -78,6 +81,7 @@ namespace NavegacaoRenal
             mouseSensitivityMultiplier = Mathf.Clamp(PlayerPrefs.GetFloat(MouseSensitivityPreference, mouseSensitivityMultiplier), 0.5f, 2f);
             hardwareBaseRotation = transform.rotation;
             inputSource = inputSourceBehaviour as IEndoscopeInputSource;
+            RememberSafePosition();
         }
 
         public void SetMouseSensitivity(float value)
@@ -176,12 +180,23 @@ namespace NavegacaoRenal
             float remaining = Mathf.Abs(signedDistance);
             if (remaining <= Mathf.Epsilon)
             {
+                if (!IsTipOverlappingWall(transform.position))
+                    RememberSafePosition();
                 UpdateContactLatch();
                 return true;
             }
 
             Vector3 direction = signedDistance >= 0f ? transform.forward : -transform.forward;
             bool completed = true;
+
+            if (IsTipOverlappingWall(transform.position))
+            {
+                if (hasLastSafePosition && !IsTipOverlappingWall(lastSafePosition))
+                    transform.position = lastSafePosition;
+                RegisterWallContact(transform.position);
+                UpdateContactLatch();
+                return false;
+            }
 
             while (remaining > Mathf.Epsilon)
             {
@@ -199,17 +214,87 @@ namespace NavegacaoRenal
                     if (safeDistance > Mathf.Epsilon)
                         transform.position += direction * safeDistance;
 
+                    if (!IsTipOverlappingWall(transform.position))
+                        RememberSafePosition();
+
                     RegisterWallContact(hit.point);
                     completed = false;
                     break;
                 }
 
-                transform.position += direction * step;
+                Vector3 candidate = transform.position + direction * step;
+                if (IsTipOverlappingWall(candidate))
+                {
+                    RegisterWallContact(FindNearestWallPoint(candidate));
+                    completed = false;
+                    break;
+                }
+
+                transform.position = candidate;
+                RememberSafePosition();
                 remaining -= step;
             }
 
             UpdateContactLatch();
             return completed;
+        }
+
+        public bool HasClearPathTo(Vector3 targetPosition)
+        {
+            Vector3 offset = targetPosition - transform.position;
+            float distance = offset.magnitude;
+            if (distance <= Mathf.Epsilon)
+                return !IsTipOverlappingWall(transform.position);
+
+            float clearanceRadius = Mathf.Max(0.001f, tipRadius * 0.25f);
+            if (Physics.CheckSphere(transform.position, clearanceRadius, collisionMask,
+                    QueryTriggerInteraction.Ignore))
+                return false;
+
+            return !Physics.SphereCast(
+                transform.position,
+                clearanceRadius,
+                offset / distance,
+                out _,
+                distance,
+                collisionMask,
+                QueryTriggerInteraction.Ignore);
+        }
+
+        private bool IsTipOverlappingWall(Vector3 position) => Physics.CheckSphere(
+            position,
+            tipRadius,
+            collisionMask,
+            QueryTriggerInteraction.Ignore);
+
+        private Vector3 FindNearestWallPoint(Vector3 position)
+        {
+            Collider[] overlaps = Physics.OverlapSphere(
+                position,
+                tipRadius,
+                collisionMask,
+                QueryTriggerInteraction.Ignore);
+            if (overlaps.Length == 0)
+                return position;
+
+            Vector3 nearest = overlaps[0].ClosestPoint(position);
+            float nearestSquaredDistance = (nearest - position).sqrMagnitude;
+            for (int index = 1; index < overlaps.Length; index++)
+            {
+                Vector3 candidate = overlaps[index].ClosestPoint(position);
+                float squaredDistance = (candidate - position).sqrMagnitude;
+                if (squaredDistance >= nearestSquaredDistance)
+                    continue;
+                nearest = candidate;
+                nearestSquaredDistance = squaredDistance;
+            }
+            return nearest;
+        }
+
+        private void RememberSafePosition()
+        {
+            lastSafePosition = transform.position;
+            hasLastSafePosition = true;
         }
 
         private void RegisterWallContact(Vector3 point)

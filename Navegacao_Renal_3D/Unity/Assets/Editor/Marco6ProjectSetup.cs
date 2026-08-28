@@ -105,13 +105,29 @@ namespace NavegacaoRenal.Editor
             Quaternion neutral = mapper.MapRelative(Quaternion.Euler(12f, -8f, 22f), 1f, 1.5f);
             Check(Quaternion.Angle(Quaternion.identity, neutral) < 0.001f,
                 "calibracao transforma a pose inicial em orientacao neutra", checks, errors);
-            Quaternion moved = mapper.MapRelative(Quaternion.Euler(28f, 4f, 35f), 1f, 1.5f);
-            Check(Quaternion.Angle(Quaternion.identity, moved) > 5f,
-                "movimento do MPU produz orientacao relativa", checks, errors);
             mapper.Calibrate(Quaternion.identity);
+            Quaternion verticalTilt = mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.right), 1f, 1.5f);
+            Vector3 verticalDirection = verticalTilt * Vector3.forward;
+            Check(verticalDirection.y > 0.2f && Mathf.Abs(verticalDirection.x) < 0.01f,
+                "inclinacao frente/tras orienta a camera para cima/baixo", checks, errors);
+            Quaternion lateralTilt = mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.up), 1f, 1.5f);
+            Vector3 lateralDirection = lateralTilt * Vector3.forward;
+            Check(lateralDirection.x > 0.2f && Mathf.Abs(lateralDirection.y) < 0.01f,
+                "inclinacao lateral orienta a camera para esquerda/direita", checks, errors);
+            Quaternion axialTurn = mapper.MapRelative(Quaternion.AngleAxis(35f, Vector3.forward), 1f, 1.5f);
+            Check(Quaternion.Angle(Quaternion.identity, axialTurn) < 0.001f,
+                "giro axial do MPU nao causa deriva de direcao", checks, errors);
             Check(Quaternion.Angle(Quaternion.identity,
                       mapper.MapRelative(Quaternion.Euler(0.4f, 0f, 0f), 1f, 1.5f)) < 0.001f,
                 "zona morta elimina tremor inferior a 1,5 grau", checks, errors);
+            float lowGainAngle = Quaternion.Angle(Quaternion.identity,
+                mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.right), 0.5f, 0f));
+            float highGainAngle = Quaternion.Angle(Quaternion.identity,
+                mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.right), 2f, 0f));
+            Check(lowGainAngle > 9f && lowGainAngle < 11f && highGainAngle > 39f && highGainAngle < 41f,
+                "resposta do MPU escala a inclinacao entre 0,5x e 2x", checks, errors);
+
+            ValidateWallSafety(controller, checks, errors);
 
             Esp32ButtonInterpreter button = new Esp32ButtonInterpreter(0.35);
             Esp32ButtonState forward = button.Update(true, 0.0, false);
@@ -157,6 +173,8 @@ namespace NavegacaoRenal.Editor
             string managerSource = File.ReadAllText(ToAbsolute("Assets/Scripts/Runtime/KidneyGameManager.cs"));
             Check(managerSource.Contains("pausedForHardwareReconnect") && managerSource.Contains("HandleHardwareConnection"),
                 "desconexao pausa e reconexao retoma a tentativa", checks, errors);
+            Check(managerSource.Contains("controller.HasClearPathTo(targetStone.position)"),
+                "captura exige caminho livre entre a ponta e a pedra", checks, errors);
             string inputSource = File.ReadAllText(ToAbsolute("Assets/Scripts/Runtime/Esp32MpuInputSource.cs"));
             Check(inputSource.Contains("cKey.wasPressedThisFrame") && inputSource.Contains("CalibrateNow"),
                 "tecla C recalibra o MPU sem reiniciar", checks, errors);
@@ -453,6 +471,53 @@ namespace NavegacaoRenal.Editor
             for (int index = 0; index < frames; index++)
                 current = MouseEndoscopeController.AdvanceHardwareOrientation(current, target, delta, 0.12f, 70f);
             return Quaternion.Angle(Quaternion.identity, current);
+        }
+
+        private static void ValidateWallSafety(MouseEndoscopeController sceneController,
+            List<string> checks, List<string> errors)
+        {
+            int collisionLayer = LayerMask.NameToLayer("KidneyCollision");
+            if (collisionLayer < 0)
+            {
+                Check(false, "camada KidneyCollision disponivel para testes de seguranca", checks, errors);
+                return;
+            }
+
+            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject tip = new GameObject("Marco6SafetyProbe");
+            try
+            {
+                wall.name = "Marco6SafetyWall";
+                wall.layer = collisionLayer;
+                wall.transform.SetPositionAndRotation(new Vector3(0f, 0f, 0.05f), Quaternion.identity);
+                wall.transform.localScale = new Vector3(1f, 1f, 0.01f);
+
+                MouseEndoscopeController controller = tip.AddComponent<MouseEndoscopeController>();
+                controller.Configure(null, 1 << collisionLayer);
+                Physics.SyncTransforms();
+
+                Check(controller.HasClearPathTo(new Vector3(0f, 0f, 0.02f)) &&
+                      !controller.HasClearPathTo(new Vector3(0f, 0f, 0.10f)),
+                    "linha de captura aceita alvo livre e rejeita alvo atras da parede", checks, errors);
+
+                bool completed = controller.TryMoveDistance(0.10f);
+                Vector3 safePosition = controller.transform.position;
+                Check(!completed && safePosition.z < 0.04f && controller.IsWallContactLatched,
+                    "movimento para antes da parede e registra um contato", checks, errors);
+
+                controller.transform.position = wall.transform.position;
+                Physics.SyncTransforms();
+                bool escapedOverlap = !controller.TryMoveDistance(0.01f) &&
+                                      Vector3.Distance(controller.transform.position, safePosition) < 0.0001f;
+                Check(escapedOverlap,
+                    "sobreposicao acidental restaura a ultima posicao segura", checks, errors);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(tip);
+                UnityEngine.Object.DestroyImmediate(wall);
+                if (sceneController != null) Physics.SyncTransforms();
+            }
         }
 
         private static void CaptureCamera(Camera camera, Camera minimapCamera, Canvas canvas, string outputPath)

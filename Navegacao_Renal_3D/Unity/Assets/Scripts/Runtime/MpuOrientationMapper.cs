@@ -4,6 +4,7 @@ namespace NavegacaoRenal
 {
     public sealed class MpuOrientationMapper
     {
+        private const float MaximumTiltDegrees = 85f;
         private Quaternion reference = Quaternion.identity;
         public bool IsCalibrated { get; private set; }
 
@@ -23,15 +24,20 @@ namespace NavegacaoRenal
         {
             if (!IsCalibrated) Calibrate(sensorOrientation);
             Quaternion relativeSensor = Quaternion.Inverse(reference) * Normalize(sensorOrientation);
-            // MPU: X right, Y forward, Z up. Unity: X right, Y up, Z forward.
-            Quaternion unityRelative = Normalize(new Quaternion(
-                -relativeSensor.x,
-                -relativeSensor.z,
-                -relativeSensor.y,
-                relativeSensor.w));
-            if (Quaternion.Angle(Quaternion.identity, unityRelative) <= Mathf.Max(0f, deadZoneDegrees))
+
+            // The board is held flat: sensor X is right, Y is forward and Z points up.
+            // Its normal carries the two useful joystick tilts and ignores axial yaw drift.
+            Vector3 boardNormal = relativeSensor * Vector3.forward;
+            float forwardTilt = Mathf.Atan2(-boardNormal.y, boardNormal.z) * Mathf.Rad2Deg;
+            float sideTilt = Mathf.Atan2(boardNormal.x, boardNormal.z) * Mathf.Rad2Deg;
+            float tiltMagnitude = new Vector2(forwardTilt, sideTilt).magnitude;
+            if (tiltMagnitude <= Mathf.Max(0f, deadZoneDegrees))
                 return Quaternion.identity;
-            return Quaternion.SlerpUnclamped(Quaternion.identity, unityRelative, Mathf.Clamp(responseGain, 0.5f, 2f));
+
+            float gain = Mathf.Clamp(responseGain, 0.5f, 2f);
+            float unityPitch = Mathf.Clamp(-forwardTilt * gain, -MaximumTiltDegrees, MaximumTiltDegrees);
+            float unityYaw = Mathf.Clamp(sideTilt * gain, -MaximumTiltDegrees, MaximumTiltDegrees);
+            return Quaternion.Euler(unityPitch, unityYaw, 0f);
         }
 
         private static Quaternion Normalize(Quaternion value)
