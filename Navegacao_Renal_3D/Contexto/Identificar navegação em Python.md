@@ -581,7 +581,7 @@ Estado: implementado e validado por simulação/replay no Unity `6000.5.0f1`.
 - serial nativa do Windows em thread de fundo, sem DLL externa;
 - perda de dados por `250 ms` pausa a tentativa e a reconexão retoma do mesmo
   ponto;
-- `133` verificações anteriores e `40` novas passaram, totalizando `173`;
+- `133` verificações anteriores e `61` novas passaram, totalizando `194`;
 - firmware compilado com sucesso para `esp32dev`;
 - validação elétrica real registrada como pendente porque o conjunto ainda não
   está montado;

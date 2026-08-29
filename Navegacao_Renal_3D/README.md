@@ -22,7 +22,7 @@ Use Unity `6000.5.0f1` e abra `Assets/Scenes/MainMenu.unity`.
 - detecção automática/lista COM, calibração por `C` e pausa segura na
   desconexão;
 - firmware JSON v2 compilado para `esp32dev`;
-- relatório aprovado com `173` verificações em
+- relatório aprovado com `194` verificações em
   `Unity/Documentation/marco6_validation.json`.
 
 Instruções completas: `Unity/Documentation/MARCO_6.md`.

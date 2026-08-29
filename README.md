@@ -1,112 +1,61 @@
-# Semi-automatic Ureteroscopy Planning VR
+# Ureteroscope Path Planning
 
-Academic prototype that converts a navigable urinary-tract mask into validated routes and an interactive Meta Quest case. The clinical workflow remains human-in-the-loop: anatomy and entry point are reviewed before route generation.
+Repositório acadêmico para pesquisa e treinamento em navegação
+ureteroscópica. A linha ativa de desenvolvimento está na branch `DoZero` e usa
+como fonte principal o projeto [`Navegacao_Renal_3D`](Navegacao_Renal_3D/README.md).
 
-> Research/training prototype only. It is not validated for diagnosis, patient care, intra-operative navigation, or robotic control.
+> Protótipo de pesquisa e treinamento. Não é validado para diagnóstico,
+> atendimento a pacientes, navegação intraoperatória ou controle robótico.
 
-## Current workflow
+## Mapa do repositório
+
+| Área | Estado | Finalidade |
+| --- | --- | --- |
+| `Navegacao_Renal_3D/` | **Ativa** | Unity 6, Maya, modelos, validações e ferramentas do jogo atual. |
+| `hardware/firmware/ureteroscope_controller/` | **Ativa** | Firmware ESP32 DevKit V1, MPU6050 e botão físico. |
+| `scripts/` | **Ativa** | Validação integrada da branch `DoZero`. |
+| Pipeline Python na raiz | Legado preservado | Planejamento A*, exportação de casos e integração com o protótipo VR anterior. |
+| `UnityVRPrototype/` | Legado preservado | Projeto Unity anterior para Quest e treinamento desktop. |
+
+O legado continua funcional e não deve ser usado como base do novo jogo. Suas
+instruções originais estão em [Pipeline legado](docs/LEGACY_PIPELINE.md).
+
+## Estado atual
+
+- Marcos 1–6 implementados;
+- Marco 6 aprovado com `194` verificações (`133` herdadas + `61` próprias);
+- controle ESP32/MPU validado por simulação e replay;
+- teste elétrico com o hardware físico ainda pendente;
+- próxima evolução aprovada para planejamento: Marco 5.1, com revisão
+  anatômica v004 antes de qualquer substituição no Unity.
+
+O estado canônico, hashes protegidos e restrições estão em
+[PROJECT_STATUS.md](Navegacao_Renal_3D/PROJECT_STATUS.md).
+
+## Validação da `DoZero`
+
+No PowerShell, a partir da raiz:
+
+```powershell
+.\scripts\validate-dozero.ps1
+```
+
+Antes de integrar ou publicar um marco, use o gate de worktree limpo:
+
+```powershell
+.\scripts\validate-dozero.ps1 -RequireClean
+```
+
+O comando verifica Git, LFS, testes Python, firmware `esp32dev` e Unity
+`6000.5.0f1`. O fluxo de branches, commits, relatórios e novos arquivos LFS
+está em [DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md).
+
+## Abertura do projeto ativo
+
+No Unity Hub, adicione a pasta:
 
 ```text
-Reviewed anatomy mask + entry point
-                 |
-Optional stone mask -> automatic 3D components and targets
-                 |
-             A* routes
-                 |
-Safe B-Spline + route validation
-                 |
-manifest.json + OBJ meshes + routes.json
-                 |
-Unity/OpenXR -> Meta Quest
+Navegacao_Renal_3D/Unity
 ```
 
-The original classification project is intentionally not required. A stone segmentation mask can be supplied when a validated model is available; otherwise the operator provides a target.
-
-## Quick start
-
-Install Python dependencies and generate the sample case:
-
-```powershell
-python -m pip install -r requirements-vr-export.txt
-.\build_vr_case.cmd -MaskDir map -CaseId murillo_sample_case -SpacingMm "2,2,2"
-```
-
-This creates `cases/murillo_sample_case/`, validates it, and synchronizes it with `UnityVRPrototype/Assets/StreamingAssets/Cases/`.
-
-With a 3D stone mask in the same geometry:
-
-```powershell
-.\build_vr_case.cmd `
-  -MaskDir "data\case_001\lumen" `
-  -StoneMask "data\case_001\stones.nii.gz" `
-  -CaseId "case_001" `
-  -Start "253,355,20" `
-  -SpacingMm "0.72,0.72,1.0"
-```
-
-The stone mask is split into 3D connected components. The pipeline calculates centroid, volume, equivalent diameter, and a route for each retained component. If a centroid is outside the navigable mask, the planning target is snapped to its nearest navigable voxel and both locations remain recorded.
-
-## Build and install on Quest
-
-After installing Android Build Support and configuring the headset:
-
-```powershell
-.\build_vr_case.cmd -MaskDir map -CaseId murillo_sample_case -SpacingMm "2,2,2" -BuildApk
-```
-
-To build and install on an authorized USB-connected Quest:
-
-```powershell
-.\build_vr_case.cmd -MaskDir map -CaseId murillo_sample_case -SpacingMm "2,2,2" -Install
-```
-
-The APK is written to `UnityVRPrototype/Builds/UreteroscopyVR.apk`. See [Quest setup and testing](docs/QUEST_TESTING.md).
-
-## Unity interaction
-
-- Grip with one controller: move and rotate the model.
-- Grip with both controllers: move and scale the model.
-- `X`: anatomy visibility.
-- `Y`: route visibility.
-- `A`: start/stop route marker.
-- `B`: next route/stone.
-- Left thumbstick up/down: anatomy opacity.
-- Left thumbstick click: reset model.
-- Right thumbstick left/right: previous/next case.
-- Controller ray + trigger: use the world-space menu.
-
-Editor keyboard fallback: `O`, `P`, `F`, `N`, `C`, `R`, `+`, and `-`.
-
-## Desktop training game
-
-The Unity project also includes a monitor-based academic training mode with an endoscopic camera, minimap, three difficulty levels, wall collisions, score, and anonymous local CSV results. It works with keyboard/mouse or the ESP32-S3 physical probe controller.
-
-Open `Assets/Scenes/UreteroscopyDesktopTraining.unity` or use `Murillo VR > Setup Desktop Training Scene`. Build a Windows executable with `Murillo VR > Build Desktop Training (Windows)`.
-
-See [desktop training](docs/DESKTOP_TRAINING.md) and [physical controller assembly](docs/PHYSICAL_CONTROLLER.md).
-
-## DICOM/NIfTI
-
-Install optional medical I/O dependencies:
-
-```powershell
-python -m pip install -r requirements-medical-io.txt
-python dicom_to_nifti.py "anonymized_dicom" "case_001_ct.nii.gz"
-```
-
-The converter preserves spacing, origin, and direction in a geometry JSON but deliberately copies no patient tags. The input must already be authorized and de-identified.
-
-## Validation
-
-```powershell
-python -m unittest discover -s tests -v
-python validate_vr_case.py cases\murillo_sample_case
-```
-
-Inside Unity use `Murillo VR > Validate Project`. The APK build runs the same validation automatically.
-
-The v2 case interface is documented in [CASE_FORMAT.md](docs/CASE_FORMAT.md). Remaining data and hardware dependencies are documented in [AUTOMATION_STATUS.md](docs/AUTOMATION_STATUS.md).
-
-## Practical Windows note
-
-Unity batch mode can fail when the project is inside OneDrive or a path containing accents. For `-BuildApk`, the build script now stages a temporary copy under an ASCII-only path automatically and copies the APK back afterward. A clean worktree such as `C:\UnityWork\UreteroscopyVR` is still recommended when opening or building the project manually in the Editor.
+Use Unity `6000.5.0f1` e abra `Assets/Scenes/MainMenu.unity`.

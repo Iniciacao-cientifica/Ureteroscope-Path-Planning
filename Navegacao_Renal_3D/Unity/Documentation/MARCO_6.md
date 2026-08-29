@@ -46,8 +46,8 @@ As instruções de montagem e gravação estão em
 
 - Unity `6000.5.0f1` sem erros de compilação ou scripts ausentes;
 - `133` verificações anteriores reexecutadas;
-- `40` verificações específicas do Marco 6;
-- `173` verificações aprovadas no total;
+- `61` verificações específicas do Marco 6;
+- `194` verificações aprovadas no total;
 - parser, quaternion, calibração, zona morta e replay serial testados;
 - orientação comparada em 30, 60 e 120 FPS;
 - firmware compilado com sucesso para ESP32 DevKit V1;
