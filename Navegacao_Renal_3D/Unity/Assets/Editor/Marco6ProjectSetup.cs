@@ -246,7 +246,10 @@ namespace NavegacaoRenal.Editor
                 checks = checks.ToArray(),
                 errors = errors.ToArray()
             };
-            string reportPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/marco6_validation.json"));
+            string reportOverride = Environment.GetEnvironmentVariable("NAVEGACAO_RENAL_VALIDATION_REPORT");
+            string reportPath = string.IsNullOrWhiteSpace(reportOverride)
+                ? Path.GetFullPath(Path.Combine(Application.dataPath, "../Documentation/marco6_validation.json"))
+                : Path.GetFullPath(reportOverride);
             Directory.CreateDirectory(Path.GetDirectoryName(reportPath));
             File.WriteAllText(reportPath, JsonUtility.ToJson(report, true));
             Debug.Log($"[Marco6] Relatorio: {reportPath}\n{JsonUtility.ToJson(report, true)}");
