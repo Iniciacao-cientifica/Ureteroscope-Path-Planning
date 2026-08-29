@@ -87,7 +87,7 @@ namespace NavegacaoRenal.Editor
             if (manager != null)
             {
                 Check(manager.MaximumWallContacts == 5, "nivel facil encerra no quinto contato", checks, errors);
-                Check(Approximately(manager.CaptureDistance, 0.10f), "distancia de captura preservada em 0,10 m", checks, errors);
+                Check(Approximately(manager.CaptureDistance, 0.018f), "captura limitada a 0,018 m entre as mandibulas", checks, errors);
                 Check(Approximately(manager.CaptureHoldDuration, 1f), "captura exige 1 segundo continuo", checks, errors);
                 Check(manager.RouteVisible && manager.MinimapVisible, "rota e minimapa iniciam ligados", checks, errors);
 
@@ -119,7 +119,7 @@ namespace NavegacaoRenal.Editor
                 if (probe != null && stone != null)
                 {
                     manager.BeginAttempt();
-                    probe.position = stone.position;
+                    stone.position = gripper.CaptureAnchor.position;
                     Physics.SyncTransforms();
                     manager.ProcessCapture(0.5f, true);
                     Check(manager.CaptureProgress01 > 0.49f && manager.CaptureProgress01 < 0.51f,
@@ -221,6 +221,7 @@ namespace NavegacaoRenal.Editor
             VirtualGripperController gripper = CreateVirtualGripper(probe);
             KidneyGameUI ui = CreateGameplayUI(manager);
             controller.ConfigureInputSource(input);
+            controller.ConfigureGripper(gripper);
             manager.ConfigureGameplay(input, gripper, ui, audio);
             manager.SetRouteVisible(true);
             manager.SetMinimapVisible(true);
@@ -298,8 +299,8 @@ namespace NavegacaoRenal.Editor
             Transform rightPivot = new GameObject("RightJawPivot").transform;
             rightPivot.SetParent(root.transform, false);
             rightPivot.localPosition = new Vector3(0.003f, 0f, 0.010f);
-            CreateJaw("LeftJaw", leftPivot, material, -0.002f);
-            CreateJaw("RightJaw", rightPivot, material, 0.002f);
+            Transform leftJaw = CreateJaw("LeftJaw", leftPivot, material, -0.002f);
+            Transform rightJaw = CreateJaw("RightJaw", rightPivot, material, 0.002f);
 
             GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             shaft.name = "GripperShaft";
@@ -313,11 +314,11 @@ namespace NavegacaoRenal.Editor
             Transform captureAnchor = new GameObject("StoneCaptureAnchor").transform;
             captureAnchor.SetParent(root.transform, false);
             captureAnchor.localPosition = new Vector3(0f, 0f, 0.052f);
-            gripper.Configure(leftPivot, rightPivot, captureAnchor);
+            gripper.Configure(leftPivot, rightPivot, captureAnchor, leftJaw, rightJaw, shaft.transform, 0.018f);
             return gripper;
         }
 
-        private static void CreateJaw(string name, Transform pivot, Material material, float x)
+        private static Transform CreateJaw(string name, Transform pivot, Material material, float x)
         {
             GameObject jaw = GameObject.CreatePrimitive(PrimitiveType.Cube);
             jaw.name = name;
@@ -326,6 +327,7 @@ namespace NavegacaoRenal.Editor
             jaw.transform.localScale = new Vector3(0.0022f, 0.0022f, 0.036f);
             jaw.GetComponent<Renderer>().sharedMaterial = material;
             UnityEngine.Object.DestroyImmediate(jaw.GetComponent<Collider>());
+            return jaw.transform;
         }
 
         private static KidneyGameUI CreateGameplayUI(KidneyGameManager manager)

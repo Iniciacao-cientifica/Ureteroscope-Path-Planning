@@ -62,6 +62,7 @@ namespace NavegacaoRenal.Editor
             Esp32MpuInputSource mpu = FindSceneComponent<Esp32MpuInputSource>(gameScene, "KidneyGameManager");
             EndoscopeInputRouter router = FindSceneComponent<EndoscopeInputRouter>(gameScene, "KidneyGameManager");
             KidneyHardwareUI hardwareUi = FindSceneComponent<KidneyHardwareUI>(gameScene, "GameplayCanvas");
+            VirtualGripperController gripper = FindSceneComponent<VirtualGripperController>(gameScene, "VirtualGripper");
 
             Check(manager != null && controller != null && mouse != null && mpu != null && router != null,
                 "cena possui controlador, fontes de mouse/MPU e roteador", checks, errors);
@@ -74,15 +75,22 @@ namespace NavegacaoRenal.Editor
             Check(hardwareUi != null && hardwareUi.IsConfigured,
                 "Canvas possui conexao, porta COM, calibracao e sensibilidade", checks, errors);
             Check(controller != null && Approximately(controller.ForwardSpeed, 0.10f) &&
-                  Approximately(controller.TipRadius, 0.010f) && Approximately(controller.MaximumSubstepDistance, 0.005f) &&
+                  Approximately(controller.TipRadius, 0.010f) && Approximately(controller.MaximumSubstepDistance, 0.001f) &&
+                  Approximately(controller.MaximumRotationSubstepDegrees, 1f) &&
                   Approximately(controller.CollisionSkin, 0.001f) && Approximately(controller.ContactRearmRadius, 0.015f),
-                "SphereCast preserva velocidade, raio, subpasso, margem e rearme", checks, errors);
-            Check(controller != null && Approximately(controller.MaximumSteeringSpeed, 70f) &&
-                  Approximately(controller.SteeringSmoothTime, 0.12f),
-                "orientacao preserva limite de 70 graus por segundo e suavizacao de 0,12 s", checks, errors);
+                "pose protegida usa subpassos de 1 mm e rotacoes de 1 grau", checks, errors);
+            Check(gripper != null && gripper.IsConfigured && controller != null && controller.VirtualGripper == gripper &&
+                  Approximately(gripper.CaptureRadius, 0.018f),
+                "camera, eixo e duas mandibulas formam o volume protegido", checks, errors);
+            Check(controller != null && Approximately(controller.MaximumSteeringSpeed, 50f) &&
+                  Approximately(controller.SteeringSmoothTime, 0.18f),
+                "orientacao usa limite de 50 graus por segundo e suavizacao de 0,18 s", checks, errors);
             Check(mpu != null && Approximately(mpu.StalePacketSeconds, 0.25f) &&
-                  Approximately(mpu.OrientationDeadZoneDegrees, 1.5f),
-                "MPU usa timeout de 250 ms e zona morta pequena", checks, errors);
+                  Approximately(mpu.OrientationDeadZoneDegrees, 2.5f) && Approximately(mpu.ResponseGain, 0.8f),
+                "MPU usa resposta 0,8x, zona morta de 2,5 graus e timeout de 250 ms", checks, errors);
+            Check(manager != null && Approximately(manager.CaptureDistance, 0.018f) &&
+                  Approximately(manager.CaptureHoldDuration, 1f),
+                "captura exige 1 segundo a no maximo 0,018 m da ancora", checks, errors);
             Check(CountMissingScripts(gameScene) == 0, "cena de jogo sem scripts ausentes", checks, errors);
 
             const string validPacket = "{\"v\":2,\"seq\":123,\"ms\":4567,\"q\":[1.0,0.0,0.0,0.0],\"button\":true,\"imu_ok\":true,\"fw\":\"mpu6050-button-v2.0.0\"}";
@@ -102,24 +110,24 @@ namespace NavegacaoRenal.Editor
 
             MpuOrientationMapper mapper = new MpuOrientationMapper();
             mapper.Calibrate(Quaternion.Euler(12f, -8f, 22f));
-            Quaternion neutral = mapper.MapRelative(Quaternion.Euler(12f, -8f, 22f), 1f, 1.5f);
+            Quaternion neutral = mapper.MapRelative(Quaternion.Euler(12f, -8f, 22f), 0.8f, 2.5f);
             Check(Quaternion.Angle(Quaternion.identity, neutral) < 0.001f,
                 "calibracao transforma a pose inicial em orientacao neutra", checks, errors);
             mapper.Calibrate(Quaternion.identity);
-            Quaternion verticalTilt = mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.right), 1f, 1.5f);
+            Quaternion verticalTilt = mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.right), 0.8f, 2.5f);
             Vector3 verticalDirection = verticalTilt * Vector3.forward;
             Check(verticalDirection.y > 0.2f && Mathf.Abs(verticalDirection.x) < 0.01f,
                 "inclinacao frente/tras orienta a camera para cima/baixo", checks, errors);
-            Quaternion lateralTilt = mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.up), 1f, 1.5f);
+            Quaternion lateralTilt = mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.up), 0.8f, 2.5f);
             Vector3 lateralDirection = lateralTilt * Vector3.forward;
             Check(lateralDirection.x > 0.2f && Mathf.Abs(lateralDirection.y) < 0.01f,
                 "inclinacao lateral orienta a camera para esquerda/direita", checks, errors);
-            Quaternion axialTurn = mapper.MapRelative(Quaternion.AngleAxis(35f, Vector3.forward), 1f, 1.5f);
+            Quaternion axialTurn = mapper.MapRelative(Quaternion.AngleAxis(35f, Vector3.forward), 0.8f, 2.5f);
             Check(Quaternion.Angle(Quaternion.identity, axialTurn) < 0.001f,
                 "giro axial do MPU nao causa deriva de direcao", checks, errors);
             Check(Quaternion.Angle(Quaternion.identity,
-                      mapper.MapRelative(Quaternion.Euler(0.4f, 0f, 0f), 1f, 1.5f)) < 0.001f,
-                "zona morta elimina tremor inferior a 1,5 grau", checks, errors);
+                      mapper.MapRelative(Quaternion.Euler(2f, 0f, 0f), 0.8f, 2.5f)) < 0.001f,
+                "zona morta elimina tremor inferior a 2,5 graus", checks, errors);
             float lowGainAngle = Quaternion.Angle(Quaternion.identity,
                 mapper.MapRelative(Quaternion.AngleAxis(20f, Vector3.right), 0.5f, 0f));
             float highGainAngle = Quaternion.Angle(Quaternion.identity,
@@ -173,11 +181,21 @@ namespace NavegacaoRenal.Editor
             string managerSource = File.ReadAllText(ToAbsolute("Assets/Scripts/Runtime/KidneyGameManager.cs"));
             Check(managerSource.Contains("pausedForHardwareReconnect") && managerSource.Contains("HandleHardwareConnection"),
                 "desconexao pausa e reconexao retoma a tentativa", checks, errors);
-            Check(managerSource.Contains("controller.HasClearPathTo(targetStone.position)"),
-                "captura exige caminho livre entre a ponta e a pedra", checks, errors);
+            Check(managerSource.Contains("virtualGripper.CaptureAnchor") &&
+                  managerSource.Contains("controller.HasClearPathFrom(anchor.position, targetStone.position)"),
+                "captura usa a ancora entre as mandibulas e exige caminho livre", checks, errors);
             string inputSource = File.ReadAllText(ToAbsolute("Assets/Scripts/Runtime/Esp32MpuInputSource.cs"));
             Check(inputSource.Contains("cKey.wasPressedThisFrame") && inputSource.Contains("CalibrateNow"),
                 "tecla C recalibra o MPU sem reiniciar", checks, errors);
+            Check(inputSource.Contains("NavegacaoRenal.MpuResponseV2"),
+                "nova preferencia impede sensibilidade antiga de substituir 0,8x", checks, errors);
+            string hardwareUiSource = File.ReadAllText(ToAbsolute("Assets/Scripts/Runtime/KidneyHardwareUI.cs"));
+            Check(hardwareUiSource.Contains("sensitivitySlider.minValue = 0.5f") &&
+                  hardwareUiSource.Contains("sensitivitySlider.maxValue = 2f"),
+                "slider de resposta permanece entre 0,5x e 2x", checks, errors);
+            string navigationSource = File.ReadAllText(ToAbsolute("Assets/Scripts/Runtime/MouseEndoscopeController.cs"));
+            Check(!navigationSource.Contains("RouteGuide") && !navigationSource.Contains("Route"),
+                "rota iluminada nao limita a exploracao das cavidades conectadas", checks, errors);
 
             Scene menuScene = EditorSceneManager.OpenScene(MenuScenePath, OpenSceneMode.Single);
             MainMenuPresenter menu = FindSceneComponent<MainMenuPresenter>(menuScene, "MainMenu");
@@ -322,9 +340,13 @@ namespace NavegacaoRenal.Editor
             if (mpu == null) mpu = manager.gameObject.AddComponent<Esp32MpuInputSource>();
             EndoscopeInputRouter router = manager.GetComponent<EndoscopeInputRouter>();
             if (router == null) router = manager.gameObject.AddComponent<EndoscopeInputRouter>();
+            VirtualGripperController gripper = FindSceneComponent<VirtualGripperController>(scene, "VirtualGripper");
+            if (gripper == null || !gripper.IsConfigured)
+                throw new InvalidOperationException("Garra fisica do Marco 4 nao encontrada ou incompleta.");
             mpu.Configure(manager);
             router.Configure(mouse, mpu);
             router.SelectMode(EndoscopeControlMode.MouseKeyboard);
+            controller.ConfigureGripper(gripper);
 
             GameObject ready = FindSceneObject(scene, "ReadyPanel");
             Text readyControls = FindSceneObject(scene, "ReadyControls")?.GetComponent<Text>();
@@ -469,7 +491,7 @@ namespace NavegacaoRenal.Editor
             float delta = 1f / framesPerSecond;
             int frames = Mathf.RoundToInt(durationSeconds * framesPerSecond);
             for (int index = 0; index < frames; index++)
-                current = MouseEndoscopeController.AdvanceHardwareOrientation(current, target, delta, 0.12f, 70f);
+                current = MouseEndoscopeController.AdvanceHardwareOrientation(current, target, delta, 0.18f, 50f);
             return Quaternion.Angle(Quaternion.identity, current);
         }
 
@@ -485,39 +507,133 @@ namespace NavegacaoRenal.Editor
 
             GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
             GameObject tip = new GameObject("Marco6SafetyProbe");
+            GameObject startObject = new GameObject("Marco6SafetyStart");
+            GameObject managerObject = new GameObject("Marco6SafetyManager");
+            GameObject stone = new GameObject("Marco6SafetyStone");
             try
             {
                 wall.name = "Marco6SafetyWall";
                 wall.layer = collisionLayer;
-                wall.transform.SetPositionAndRotation(new Vector3(0f, 0f, 0.05f), Quaternion.identity);
-                wall.transform.localScale = new Vector3(1f, 1f, 0.01f);
-
                 MouseEndoscopeController controller = tip.AddComponent<MouseEndoscopeController>();
-                controller.Configure(null, 1 << collisionLayer);
+                VirtualGripperController gripper = CreateValidationGripper(tip.transform);
+                KidneyGameManager manager = managerObject.AddComponent<KidneyGameManager>();
+                controller.Configure(manager, 1 << collisionLayer);
+                controller.ConfigureGripper(gripper);
+                startObject.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                wall.transform.localScale = new Vector3(1f, 1f, 0.002f);
+                SetValidationWall(wall, new Vector3(0f, 0f, 1f));
                 Physics.SyncTransforms();
 
-                Check(controller.HasClearPathTo(new Vector3(0f, 0f, 0.02f)) &&
-                      !controller.HasClearPathTo(new Vector3(0f, 0f, 0.10f)),
-                    "linha de captura aceita alvo livre e rejeita alvo atras da parede", checks, errors);
+                Check(controller.IsCurrentPoseClear(),
+                    "pose sintetica inicia com camera e garra inteiras livres", checks, errors);
 
-                bool completed = controller.TryMoveDistance(0.10f);
+                SetValidationWall(wall, new Vector3(0f, 0f, 0.009f));
+                Check(!controller.IsCurrentPoseClear(),
+                    "esfera da camera detecta contato individual", checks, errors);
+                SetValidationWall(wall, new Vector3(0f, 0f, 0.040f));
+                Check(!controller.IsCurrentPoseClear(),
+                    "capsula do eixo detecta contato individual", checks, errors);
+                SetValidationWall(wall, new Vector3(0f, 0f, 0.073f));
+                Check(!controller.IsCurrentPoseClear(),
+                    "caixas das mandibulas detectam contato individual", checks, errors);
+
+                SetValidationWall(wall, new Vector3(0f, 0f, 0.105f));
+                controller.ResetTo(startObject.transform);
+                int contactsBefore = manager.WallContacts;
+                bool completed = controller.TryMoveDistance(0.15f);
                 Vector3 safePosition = controller.transform.position;
-                Check(!completed && safePosition.z < 0.04f && controller.IsWallContactLatched,
-                    "movimento para antes da parede e registra um contato", checks, errors);
+                Check(!completed && safePosition.z < 0.03f && controller.IsWallContactLatched,
+                    "movimento longo de um frame para antes da parede", checks, errors);
+                controller.TryMoveDistance(0.15f);
+                Check(manager.WallContacts == contactsBefore + 1,
+                    "contato permanece unico durante o mesmo episodio", checks, errors);
 
-                controller.transform.position = wall.transform.position;
+                controller.transform.position = new Vector3(0f, 0f, 0.105f);
                 Physics.SyncTransforms();
                 bool escapedOverlap = !controller.TryMoveDistance(0.01f) &&
                                       Vector3.Distance(controller.transform.position, safePosition) < 0.0001f;
                 Check(escapedOverlap,
-                    "sobreposicao acidental restaura a ultima posicao segura", checks, errors);
+                    "sobreposicao acidental restaura posicao e rotacao seguras", checks, errors);
+
+                SetValidationWall(wall, new Vector3(0.073f, 0f, 0f), new Vector3(0.006f, 1f, 0.020f));
+                controller.ResetTo(startObject.transform);
+                bool rotated = controller.TryRotateTo(Quaternion.Euler(0f, 90f, 0f));
+                Check(!rotated && Quaternion.Angle(controller.transform.rotation, Quaternion.Euler(0f, 90f, 0f)) > 1f,
+                    "giro parado em passos de 1 grau nao atravessa a parede", checks, errors);
+
+                SetValidationWall(wall, new Vector3(0f, 0f, 1f));
+                controller.ResetTo(startObject.transform);
+                manager.Configure(null, null, tip.transform, startObject.transform, stone.transform, null, null);
+                manager.ConfigureGameplay(null, gripper, null, null);
+                stone.transform.position = tip.transform.position + Vector3.right * 0.10f;
+                Check(!manager.IsWithinCaptureRange,
+                    "captura rejeita pedra a 0,10 m da camera fora das mandibulas", checks, errors);
+                stone.transform.position = gripper.CaptureAnchor.position + gripper.CaptureAnchor.forward * 0.017f;
+                Check(manager.IsWithinCaptureRange,
+                    "captura aceita pedra ate 0,018 m da ancora entre as mandibulas", checks, errors);
+                Vector3 captureWall = Vector3.Lerp(gripper.CaptureAnchor.position, stone.transform.position, 0.5f);
+                SetValidationWall(wall, captureWall, Vector3.one * 0.002f);
+                Check(!manager.IsWithinCaptureRange,
+                    "parede entre a garra e a pedra bloqueia painel e progresso", checks, errors);
+
+                Check(sceneController != null && sceneController.CollisionMask == (1 << collisionLayer) &&
+                      sceneController.VirtualGripper != null && sceneController.IsCurrentPoseClear(),
+                    "cena usa somente KidneyCollision e inicia com a garra inteira dentro da anatomia", checks, errors);
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(tip);
                 UnityEngine.Object.DestroyImmediate(wall);
+                UnityEngine.Object.DestroyImmediate(startObject);
+                UnityEngine.Object.DestroyImmediate(managerObject);
+                UnityEngine.Object.DestroyImmediate(stone);
                 if (sceneController != null) Physics.SyncTransforms();
             }
+        }
+
+        private static VirtualGripperController CreateValidationGripper(Transform probe)
+        {
+            GameObject root = new GameObject("Marco6ValidationGripper");
+            root.transform.SetParent(probe, false);
+            root.transform.localPosition = new Vector3(0f, 0f, 0.040f);
+            VirtualGripperController gripper = root.AddComponent<VirtualGripperController>();
+
+            Transform leftPivot = new GameObject("LeftPivot").transform;
+            leftPivot.SetParent(root.transform, false);
+            leftPivot.localPosition = new Vector3(-0.004f, 0f, 0.015f);
+            Transform rightPivot = new GameObject("RightPivot").transform;
+            rightPivot.SetParent(root.transform, false);
+            rightPivot.localPosition = new Vector3(0.004f, 0f, 0.015f);
+
+            GameObject leftJaw = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            leftJaw.transform.SetParent(leftPivot, false);
+            leftJaw.transform.localPosition = new Vector3(-0.002f, 0f, 0.018f);
+            leftJaw.transform.localScale = new Vector3(0.004f, 0.004f, 0.024f);
+            UnityEngine.Object.DestroyImmediate(leftJaw.GetComponent<Collider>());
+            GameObject rightJaw = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rightJaw.transform.SetParent(rightPivot, false);
+            rightJaw.transform.localPosition = new Vector3(0.002f, 0f, 0.018f);
+            rightJaw.transform.localScale = new Vector3(0.004f, 0.004f, 0.024f);
+            UnityEngine.Object.DestroyImmediate(rightJaw.GetComponent<Collider>());
+
+            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            shaft.transform.SetParent(root.transform, false);
+            shaft.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            shaft.transform.localScale = new Vector3(0.003f, 0.015f, 0.003f);
+            UnityEngine.Object.DestroyImmediate(shaft.GetComponent<Collider>());
+            Transform captureAnchor = new GameObject("CaptureAnchor").transform;
+            captureAnchor.SetParent(root.transform, false);
+            captureAnchor.localPosition = new Vector3(0f, 0f, 0.050f);
+            gripper.Configure(leftPivot, rightPivot, captureAnchor, leftJaw.transform, rightJaw.transform,
+                shaft.transform, 0.018f);
+            return gripper;
+        }
+
+        private static void SetValidationWall(GameObject wall, Vector3 position, Vector3? scale = null)
+        {
+            wall.transform.SetPositionAndRotation(position, Quaternion.identity);
+            wall.transform.localScale = scale ?? new Vector3(1f, 1f, 0.002f);
+            Physics.SyncTransforms();
         }
 
         private static void CaptureCamera(Camera camera, Camera minimapCamera, Canvas canvas, string outputPath)

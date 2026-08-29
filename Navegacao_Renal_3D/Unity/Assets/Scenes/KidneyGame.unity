@@ -4322,7 +4322,7 @@ MonoBehaviour:
   minimapCamera: {fileID: 0}
   initialMode: 0
   maximumWallContacts: 5
-  captureDistance: 0.1
+  captureDistance: 0.018
   captureHoldDuration: 1
   inputSourceBehaviour: {fileID: 981352763}
   virtualGripper: {fileID: 1952919862}
@@ -4533,8 +4533,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NavegacaoRenal.Esp32MpuInputSource
   gameManager: {fileID: 981352757}
   stalePacketSeconds: 0.25
-  orientationDeadZoneDegrees: 1.5
-  responseGain: 1
+  orientationDeadZoneDegrees: 2.5
+  responseGain: 0.8
 --- !u!1 &982297972
 GameObject:
   m_ObjectHideFlags: 0
@@ -8511,16 +8511,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NavegacaoRenal.MouseEndoscopeController
   forwardSpeed: 0.1
   tipRadius: 0.01
-  maximumSubstepDistance: 0.005
+  maximumSubstepDistance: 0.001
+  maximumRotationSubstepDegrees: 1
   collisionSkin: 0.001
   contactRearmRadius: 0.015
   collisionMask:
     serializedVersion: 2
     m_Bits: 1024
+  virtualGripper: {fileID: 1952919862}
   mouseRateGain: 4
   mouseSensitivityMultiplier: 1
-  maximumSteeringSpeed: 70
-  steeringSmoothTime: 0.12
+  maximumSteeringSpeed: 50
+  steeringSmoothTime: 0.18
   rollSpeed: 55
   gameManager: {fileID: 981352757}
   inputSourceBehaviour: {fileID: 981352763}
@@ -8950,7 +8952,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NavegacaoRenal.VirtualGripperController
   leftJawPivot: {fileID: 1717396078}
   rightJawPivot: {fileID: 1685143014}
+  leftJaw: {fileID: 1500580233}
+  rightJaw: {fileID: 202626917}
+  shaft: {fileID: 747779559}
   captureAnchor: {fileID: 1250866105}
+  captureRadius: 0.018
   leftOpenEuler: {x: 0, y: -14, z: 0}
   leftClosedEuler: {x: 0, y: -3, z: 0}
   rightOpenEuler: {x: 0, y: 14, z: 0}

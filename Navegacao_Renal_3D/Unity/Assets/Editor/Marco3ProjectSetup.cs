@@ -82,11 +82,11 @@ namespace NavegacaoRenal.Editor
             {
                 Check(Approximately(controller.TipRadius, 0.010f), "raio da ponta = 0,010 m (2 mm fisicos em 5x)", checks, errors);
                 Check(Approximately(controller.ForwardSpeed, 0.10f), "velocidade = 0,10 m/s (20 mm/s fisicos)", checks, errors);
-                Check(Approximately(controller.MaximumSubstepDistance, 0.005f), "subpasso maximo = 0,005 m", checks, errors);
+                Check(Approximately(controller.MaximumSubstepDistance, 0.001f), "subpasso maximo = 0,001 m", checks, errors);
                 Check(Approximately(controller.CollisionSkin, 0.001f), "margem de seguranca = 0,001 m", checks, errors);
                 Check(Approximately(controller.ContactRearmRadius, 0.015f), "rearme do toque = 0,015 m", checks, errors);
-                Check(Approximately(controller.MaximumSteeringSpeed, 70f), "direcao limitada a 70 graus/s", checks, errors);
-                Check(Approximately(controller.SteeringSmoothTime, 0.12f), "suavizacao da direcao = 0,12 s", checks, errors);
+                Check(Approximately(controller.MaximumSteeringSpeed, 50f), "direcao limitada a 50 graus/s", checks, errors);
+                Check(Approximately(controller.SteeringSmoothTime, 0.18f), "suavizacao da direcao = 0,18 s", checks, errors);
                 Check(Approximately(controller.RollSpeed, 55f), "rolamento Q/E = 55 graus/s", checks, errors);
                 Check(controller.CollisionMask == collisionMask, "SphereCast consulta somente KidneyCollision", checks, errors);
             }

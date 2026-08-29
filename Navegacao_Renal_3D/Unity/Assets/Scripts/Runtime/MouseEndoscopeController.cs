@@ -7,16 +7,18 @@ namespace NavegacaoRenal
         [Header("Physical navigation (Unity world at 5x)")]
         [SerializeField] private float forwardSpeed = 0.10f;
         [SerializeField] private float tipRadius = 0.010f;
-        [SerializeField] private float maximumSubstepDistance = 0.005f;
+        [SerializeField] private float maximumSubstepDistance = 0.001f;
+        [SerializeField] private float maximumRotationSubstepDegrees = 1f;
         [SerializeField] private float collisionSkin = 0.001f;
         [SerializeField] private float contactRearmRadius = 0.015f;
         [SerializeField] private LayerMask collisionMask;
+        [SerializeField] private VirtualGripperController virtualGripper;
 
         [Header("Steering")]
         [SerializeField] private float mouseRateGain = 4f;
         [SerializeField] private float mouseSensitivityMultiplier = 1f;
-        [SerializeField] private float maximumSteeringSpeed = 70f;
-        [SerializeField] private float steeringSmoothTime = 0.12f;
+        [SerializeField] private float maximumSteeringSpeed = 50f;
+        [SerializeField] private float steeringSmoothTime = 0.18f;
         [SerializeField] private float rollSpeed = 55f;
         [SerializeField] private KidneyGameManager gameManager;
         [SerializeField] private MonoBehaviour inputSourceBehaviour;
@@ -27,13 +29,15 @@ namespace NavegacaoRenal
         private IEndoscopeInputSource inputSource;
         private Quaternion hardwareBaseRotation = Quaternion.identity;
         private Vector3 lastSafePosition;
-        private bool hasLastSafePosition;
+        private Quaternion lastSafeRotation = Quaternion.identity;
+        private bool hasLastSafePose;
 
         private const string MouseSensitivityPreference = "NavegacaoRenal.MouseSensitivity";
 
         public float ForwardSpeed => forwardSpeed;
         public float TipRadius => tipRadius;
         public float MaximumSubstepDistance => maximumSubstepDistance;
+        public float MaximumRotationSubstepDegrees => maximumRotationSubstepDegrees;
         public float CollisionSkin => collisionSkin;
         public float ContactRearmRadius => contactRearmRadius;
         public float MaximumSteeringSpeed => maximumSteeringSpeed;
@@ -43,11 +47,18 @@ namespace NavegacaoRenal
         public bool IsWallContactLatched => wallContactLatched;
         public MonoBehaviour InputSourceBehaviour => inputSourceBehaviour;
         public float MouseSensitivityMultiplier => mouseSensitivityMultiplier;
+        public VirtualGripperController VirtualGripper => virtualGripper;
 
         public void Configure(KidneyGameManager manager, LayerMask kidneyCollisionMask)
         {
             gameManager = manager;
             collisionMask = kidneyCollisionMask;
+        }
+
+        public void ConfigureGripper(VirtualGripperController gripper)
+        {
+            virtualGripper = gripper;
+            RememberSafePoseIfClear();
         }
 
         public void ConfigureInputSource(MonoBehaviour source)
@@ -62,11 +73,14 @@ namespace NavegacaoRenal
                 return;
 
             transform.SetPositionAndRotation(anchor.position, anchor.rotation);
+            Physics.SyncTransforms();
             hardwareBaseRotation = anchor.rotation;
             smoothedSteeringVelocity = Vector2.zero;
             steeringSmoothDampVelocity = Vector2.zero;
             wallContactLatched = false;
-            RememberSafePosition();
+            hasLastSafePose = false;
+            if (!RememberSafePoseIfClear())
+                Debug.LogError("StartAnchor posiciona parte da camera/garra dentro de KidneyCollision.");
         }
 
         public static void ReleaseCursor()
@@ -78,10 +92,13 @@ namespace NavegacaoRenal
         private void Awake()
         {
             Physics.queriesHitBackfaces = true;
-            mouseSensitivityMultiplier = Mathf.Clamp(PlayerPrefs.GetFloat(MouseSensitivityPreference, mouseSensitivityMultiplier), 0.5f, 2f);
+            mouseSensitivityMultiplier = Mathf.Clamp(
+                PlayerPrefs.GetFloat(MouseSensitivityPreference, mouseSensitivityMultiplier), 0.5f, 2f);
             hardwareBaseRotation = transform.rotation;
             inputSource = inputSourceBehaviour as IEndoscopeInputSource;
-            RememberSafePosition();
+            if (virtualGripper == null)
+                virtualGripper = GetComponentInChildren<VirtualGripperController>(true);
+            RememberSafePoseIfClear();
         }
 
         public void SetMouseSensitivity(float value)
@@ -90,10 +107,7 @@ namespace NavegacaoRenal
             PlayerPrefs.SetFloat(MouseSensitivityPreference, mouseSensitivityMultiplier);
         }
 
-        private void OnDisable()
-        {
-            ReleaseCursor();
-        }
+        private void OnDisable() => ReleaseCursor();
 
         private void Update()
         {
@@ -134,8 +148,9 @@ namespace NavegacaoRenal
             if (input.SteeringMode == EndoscopeSteeringMode.RelativeOrientation)
             {
                 Quaternion target = hardwareBaseRotation * input.RelativeOrientation;
-                transform.rotation = AdvanceHardwareOrientation(transform.rotation, target, deltaTime,
+                Quaternion candidate = AdvanceHardwareOrientation(transform.rotation, target, deltaTime,
                     steeringSmoothTime, maximumSteeringSpeed);
+                TryRotateTo(candidate);
                 smoothedSteeringVelocity = Vector2.zero;
                 steeringSmoothDampVelocity = Vector2.zero;
                 return;
@@ -157,13 +172,11 @@ namespace NavegacaoRenal
                 maximumSteeringSpeed,
                 deltaTime);
 
-            transform.Rotate(
+            Quaternion candidateRotation = transform.rotation * Quaternion.Euler(
                 smoothedSteeringVelocity.x * deltaTime,
                 smoothedSteeringVelocity.y * deltaTime,
-                0f,
-                Space.Self);
-
-            transform.Rotate(0f, 0f, input.Roll * rollSpeed * deltaTime, Space.Self);
+                0f) * Quaternion.Euler(0f, 0f, input.Roll * rollSpeed * deltaTime);
+            TryRotateTo(candidateRotation);
         }
 
         public static Quaternion AdvanceHardwareOrientation(Quaternion current, Quaternion target,
@@ -175,63 +188,82 @@ namespace NavegacaoRenal
                 Mathf.Max(0f, maximumDegreesPerSecond) * Mathf.Max(0f, deltaTime));
         }
 
+        public bool TryRotateTo(Quaternion targetRotation)
+        {
+            if (!RestoreSafePoseWhenOverlapping())
+                return false;
+
+            Quaternion startRotation = transform.rotation;
+            float angle = Quaternion.Angle(startRotation, targetRotation);
+            int steps = Mathf.Max(1, Mathf.CeilToInt(angle / Mathf.Max(0.1f, maximumRotationSubstepDegrees)));
+            for (int index = 1; index <= steps; index++)
+            {
+                Quaternion candidate = Quaternion.Slerp(startRotation, targetRotation, index / (float)steps);
+                if (IsPoseOverlapping(transform.position, candidate, 0f, out Vector3 contactPoint))
+                {
+                    RestoreLastSafePose();
+                    RegisterWallContact(contactPoint);
+                    UpdateContactLatch();
+                    return false;
+                }
+
+                transform.rotation = candidate;
+                RememberSafePose();
+            }
+
+            UpdateContactLatch();
+            return true;
+        }
+
         public bool TryMoveDistance(float signedDistance)
         {
             float remaining = Mathf.Abs(signedDistance);
             if (remaining <= Mathf.Epsilon)
             {
-                if (!IsTipOverlappingWall(transform.position))
-                    RememberSafePosition();
+                RememberSafePoseIfClear();
                 UpdateContactLatch();
                 return true;
             }
 
+            if (!RestoreSafePoseWhenOverlapping())
+                return false;
+
             Vector3 direction = signedDistance >= 0f ? transform.forward : -transform.forward;
             bool completed = true;
-
-            if (IsTipOverlappingWall(transform.position))
-            {
-                if (hasLastSafePosition && !IsTipOverlappingWall(lastSafePosition))
-                    transform.position = lastSafePosition;
-                RegisterWallContact(transform.position);
-                UpdateContactLatch();
-                return false;
-            }
 
             while (remaining > Mathf.Epsilon)
             {
                 float step = Mathf.Min(remaining, maximumSubstepDistance);
-                if (Physics.SphereCast(
-                    transform.position,
-                    tipRadius,
-                    direction,
-                    out RaycastHit hit,
-                    step + collisionSkin,
-                    collisionMask,
-                    QueryTriggerInteraction.Ignore))
+                if (TryFindSweepHit(direction, step, out RaycastHit hit))
                 {
-                    float safeDistance = Mathf.Clamp(hit.distance - collisionSkin, 0f, step);
+                    float safeDistance = Mathf.Clamp(hit.distance, 0f, step);
                     if (safeDistance > Mathf.Epsilon)
-                        transform.position += direction * safeDistance;
+                    {
+                        Vector3 candidate = transform.position + direction * safeDistance;
+                        if (!IsPoseOverlapping(candidate, transform.rotation, 0f, out _))
+                        {
+                            transform.position = candidate;
+                            RememberSafePose();
+                        }
+                    }
 
-                    if (!IsTipOverlappingWall(transform.position))
-                        RememberSafePosition();
-
+                    RestoreLastSafePose();
                     RegisterWallContact(hit.point);
                     completed = false;
                     break;
                 }
 
-                Vector3 candidate = transform.position + direction * step;
-                if (IsTipOverlappingWall(candidate))
+                Vector3 nextPosition = transform.position + direction * step;
+                if (IsPoseOverlapping(nextPosition, transform.rotation, 0f, out Vector3 contactPoint))
                 {
-                    RegisterWallContact(FindNearestWallPoint(candidate));
+                    RestoreLastSafePose();
+                    RegisterWallContact(contactPoint);
                     completed = false;
                     break;
                 }
 
-                transform.position = candidate;
-                RememberSafePosition();
+                transform.position = nextPosition;
+                RememberSafePose();
                 remaining -= step;
             }
 
@@ -239,44 +271,123 @@ namespace NavegacaoRenal
             return completed;
         }
 
-        public bool HasClearPathTo(Vector3 targetPosition)
+        public bool TrySetGripperClosure(float value)
         {
-            Vector3 offset = targetPosition - transform.position;
-            float distance = offset.magnitude;
-            if (distance <= Mathf.Epsilon)
-                return !IsTipOverlappingWall(transform.position);
-
-            float clearanceRadius = Mathf.Max(0.001f, tipRadius * 0.25f);
-            if (Physics.CheckSphere(transform.position, clearanceRadius, collisionMask,
-                    QueryTriggerInteraction.Ignore))
+            if (virtualGripper == null)
                 return false;
 
-            return !Physics.SphereCast(
-                transform.position,
-                clearanceRadius,
-                offset / distance,
-                out _,
-                distance,
-                collisionMask,
-                QueryTriggerInteraction.Ignore);
+            float previous = virtualGripper.Closure;
+            virtualGripper.SetClosure(value);
+            Physics.SyncTransforms();
+            if (!IsPoseOverlapping(transform.position, transform.rotation, 0f, out Vector3 contactPoint))
+                return true;
+
+            virtualGripper.SetClosure(previous);
+            Physics.SyncTransforms();
+            RegisterWallContact(contactPoint);
+            return false;
         }
 
-        private bool IsTipOverlappingWall(Vector3 position) => Physics.CheckSphere(
-            position,
-            tipRadius,
-            collisionMask,
-            QueryTriggerInteraction.Ignore);
+        public bool IsCurrentPoseClear() =>
+            !IsPoseOverlapping(transform.position, transform.rotation, 0f, out _);
 
-        private Vector3 FindNearestWallPoint(Vector3 position)
+        public bool HasClearPathFrom(Vector3 origin, Vector3 targetPosition)
         {
-            Collider[] overlaps = Physics.OverlapSphere(
-                position,
-                tipRadius,
-                collisionMask,
-                QueryTriggerInteraction.Ignore);
-            if (overlaps.Length == 0)
-                return position;
+            Vector3 offset = targetPosition - origin;
+            float distance = offset.magnitude;
+            const float clearanceRadius = 0.001f;
+            if (Physics.CheckSphere(origin, clearanceRadius, collisionMask, QueryTriggerInteraction.Ignore))
+                return false;
+            if (distance <= Mathf.Epsilon)
+                return true;
 
+            return !Physics.SphereCast(origin, clearanceRadius, offset / distance, out _, distance,
+                collisionMask, QueryTriggerInteraction.Ignore);
+        }
+
+        public bool HasClearPathTo(Vector3 targetPosition) => HasClearPathFrom(transform.position, targetPosition);
+
+        private bool TryFindSweepHit(Vector3 direction, float distance, out RaycastHit nearestHit)
+        {
+            nearestHit = default;
+            bool blocked = false;
+            float nearestDistance = float.PositiveInfinity;
+
+            if (Physics.SphereCast(transform.position, tipRadius + collisionSkin, direction,
+                    out RaycastHit tipHit, distance, collisionMask, QueryTriggerInteraction.Ignore))
+            {
+                blocked = true;
+                nearestDistance = tipHit.distance;
+                nearestHit = tipHit;
+            }
+
+            if (virtualGripper != null && virtualGripper.TrySweep(transform, transform.position, transform.rotation,
+                    direction, distance, collisionMask, collisionSkin, out RaycastHit gripperHit) &&
+                gripperHit.distance < nearestDistance)
+            {
+                blocked = true;
+                nearestHit = gripperHit;
+            }
+
+            return blocked;
+        }
+
+        private bool IsPoseOverlapping(Vector3 position, Quaternion rotation, float margin,
+            out Vector3 contactPoint)
+        {
+            float radius = tipRadius + Mathf.Max(0f, margin);
+            Collider[] tipOverlaps = Physics.OverlapSphere(position, radius, collisionMask,
+                QueryTriggerInteraction.Ignore);
+            if (tipOverlaps.Length > 0)
+            {
+                contactPoint = FindNearestPoint(tipOverlaps, position);
+                return true;
+            }
+
+            if (virtualGripper != null && virtualGripper.IsPoseOverlapping(transform, position, rotation,
+                    collisionMask, margin, out contactPoint))
+                return true;
+
+            contactPoint = position;
+            return false;
+        }
+
+        private bool RestoreSafePoseWhenOverlapping()
+        {
+            if (!IsPoseOverlapping(transform.position, transform.rotation, 0f, out Vector3 contactPoint))
+                return true;
+
+            RestoreLastSafePose();
+            RegisterWallContact(contactPoint);
+            UpdateContactLatch();
+            return false;
+        }
+
+        private bool RememberSafePoseIfClear()
+        {
+            if (IsPoseOverlapping(transform.position, transform.rotation, 0f, out _))
+                return false;
+            RememberSafePose();
+            return true;
+        }
+
+        private void RememberSafePose()
+        {
+            lastSafePosition = transform.position;
+            lastSafeRotation = transform.rotation;
+            hasLastSafePose = true;
+        }
+
+        private void RestoreLastSafePose()
+        {
+            if (!hasLastSafePose)
+                return;
+            transform.SetPositionAndRotation(lastSafePosition, lastSafeRotation);
+            Physics.SyncTransforms();
+        }
+
+        private static Vector3 FindNearestPoint(Collider[] overlaps, Vector3 position)
+        {
             Vector3 nearest = overlaps[0].ClosestPoint(position);
             float nearestSquaredDistance = (nearest - position).sqrMagnitude;
             for (int index = 1; index < overlaps.Length; index++)
@@ -291,17 +402,10 @@ namespace NavegacaoRenal
             return nearest;
         }
 
-        private void RememberSafePosition()
-        {
-            lastSafePosition = transform.position;
-            hasLastSafePosition = true;
-        }
-
         private void RegisterWallContact(Vector3 point)
         {
             if (wallContactLatched)
                 return;
-
             wallContactLatched = true;
             gameManager?.ReportWallContact(point);
         }
@@ -310,13 +414,7 @@ namespace NavegacaoRenal
         {
             if (!wallContactLatched)
                 return;
-
-            bool wallStillNear = Physics.CheckSphere(
-                transform.position,
-                contactRearmRadius,
-                collisionMask,
-                QueryTriggerInteraction.Ignore);
-            if (!wallStillNear)
+            if (!IsPoseOverlapping(transform.position, transform.rotation, contactRearmRadius, out _))
                 wallContactLatched = false;
         }
     }

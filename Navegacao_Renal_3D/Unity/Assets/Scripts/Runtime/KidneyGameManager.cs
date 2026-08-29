@@ -17,7 +17,7 @@ namespace NavegacaoRenal
 
         [Header("Easy level")]
         [SerializeField] private int maximumWallContacts = 5;
-        [SerializeField] private float captureDistance = 0.10f;
+        [SerializeField] private float captureDistance = 0.018f;
         [SerializeField] private float captureHoldDuration = 1f;
 
         [Header("Marco 4")]
@@ -60,7 +60,9 @@ namespace NavegacaoRenal
         public KidneySessionState SessionState => sessionState;
         public int WallContacts => wallContacts;
         public int MaximumWallContacts => maximumWallContacts;
-        public float CaptureDistance => captureDistance;
+        public float CaptureDistance => virtualGripper != null && virtualGripper.IsConfigured
+            ? virtualGripper.CaptureRadius
+            : captureDistance;
         public float CaptureHoldDuration => captureHoldDuration;
         public float CaptureProgress01 => captureProgress;
         public float ElapsedTime => elapsedTime;
@@ -69,12 +71,13 @@ namespace NavegacaoRenal
         {
             get
             {
-                if (probe == null || targetStone == null ||
-                    Vector3.Distance(probe.position, targetStone.position) > captureDistance)
+                Transform anchor = virtualGripper != null ? virtualGripper.CaptureAnchor : null;
+                if (probe == null || targetStone == null || anchor == null ||
+                    Vector3.Distance(anchor.position, targetStone.position) > CaptureDistance)
                     return false;
 
                 MouseEndoscopeController controller = probe.GetComponent<MouseEndoscopeController>();
-                return controller == null || controller.HasClearPathTo(targetStone.position);
+                return controller != null && controller.HasClearPathFrom(anchor.position, targetStone.position);
             }
         }
         public bool RouteVisible => routeGuide != null && routeGuide.activeSelf;
@@ -125,6 +128,7 @@ namespace NavegacaoRenal
             inputSourceBehaviour = source;
             inputSource = source as IEndoscopeInputSource;
             virtualGripper = gripper;
+            virtualGripper?.SetCaptureRadius(captureDistance);
             gameUI = ui;
             audioFeedback = feedback;
         }
@@ -283,7 +287,12 @@ namespace NavegacaoRenal
             }
 
             captureProgress = Mathf.Clamp01(captureProgress + Mathf.Max(0f, deltaTime) / Mathf.Max(0.01f, captureHoldDuration));
-            virtualGripper?.SetClosure(captureProgress);
+            MouseEndoscopeController controller = probe != null ? probe.GetComponent<MouseEndoscopeController>() : null;
+            if (controller == null || !controller.TrySetGripperClosure(captureProgress))
+            {
+                CancelCapture();
+                return;
+            }
             if (captureProgress >= 1f)
                 CompleteCapture();
         }
@@ -416,7 +425,11 @@ namespace NavegacaoRenal
         private void CancelCapture()
         {
             captureProgress = 0f;
-            virtualGripper?.ResetGripper();
+            MouseEndoscopeController controller = probe != null ? probe.GetComponent<MouseEndoscopeController>() : null;
+            if (controller != null)
+                controller.TrySetGripperClosure(0f);
+            else
+                virtualGripper?.ResetGripper();
         }
 
         private void ResetProbePosition()
@@ -425,7 +438,11 @@ namespace NavegacaoRenal
                 return;
 
             MouseEndoscopeController controller = probe.GetComponent<MouseEndoscopeController>();
-            if (controller != null) controller.ResetTo(startAnchor);
+            if (controller != null)
+            {
+                controller.ResetTo(startAnchor);
+                virtualGripper?.ResetGripper();
+            }
             else probe.SetPositionAndRotation(startAnchor.position, startAnchor.rotation);
         }
 

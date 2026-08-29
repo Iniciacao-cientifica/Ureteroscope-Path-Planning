@@ -6,13 +6,13 @@ namespace NavegacaoRenal
 {
     public sealed class Esp32MpuInputSource : MonoBehaviour, IEndoscopeInputSource
     {
-        private const string ResponsePreference = "NavegacaoRenal.MpuResponse";
+        private const string ResponsePreference = "NavegacaoRenal.MpuResponseV2";
         private const string PortPreference = "NavegacaoRenal.Esp32Port";
 
         [SerializeField] private KidneyGameManager gameManager;
         [SerializeField] private float stalePacketSeconds = 0.25f;
-        [SerializeField] private float orientationDeadZoneDegrees = 1.5f;
-        [SerializeField] private float responseGain = 1f;
+        [SerializeField] private float orientationDeadZoneDegrees = 2.5f;
+        [SerializeField] private float responseGain = 0.8f;
 
         private IEsp32PacketTransport transport;
         private bool ownsTransport;
